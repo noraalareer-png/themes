@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>زد · اختبار الثيمات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1f0433;        /* deep plum text */
+    --plum:#3c1c54;       /* secondary plum */
+    --violet:#af72ff;     /* brand accent */
+    --violet-700:#8b4dee; /* hover */
+    --bg:#f7f4fc;
+    --card:#ffffff;
+    --muted:#6b6478;
+    --border:#ece7f5;
+    --ok:#1f7a4d; --ok-bg:#e9f7ef;
+    --err:#c02b2b; --err-bg:#fdecec;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:'IBM Plex Sans Arabic',system-ui,'Segoe UI',Tahoma,sans-serif;
+    background:radial-gradient(1200px 500px at 100% -10%, #efe6ff 0%, var(--bg) 45%) no-repeat, var(--bg);
+    color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+  .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--violet),var(--plum));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;box-shadow:0 8px 20px rgba(175,114,255,.35)}
+  .brand b{font-size:18px}
+  .brand span{color:var(--muted);font-size:13px;display:block;margin-top:-2px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:22px;max-width:520px;width:100%;
+    padding:34px 32px;box-shadow:0 24px 60px -30px rgba(31,4,51,.35)}
+  h1{font-size:22px;margin:0 0 6px;font-weight:700}
+  p.sub{color:var(--muted);margin:0 0 26px;font-size:14px;line-height:1.7}
+  label{display:block;font-size:13px;font-weight:600;margin:18px 0 7px}
+  input{width:100%;padding:13px 15px;border-radius:14px;border:1.5px solid var(--border);background:#fcfbff;
+    color:var(--ink);font-size:14px;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+  input::placeholder{color:#b3adc2}
+  input:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 4px rgba(175,114,255,.15)}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  button{width:100%;margin-top:26px;padding:14px;border:0;border-radius:9999px;cursor:pointer;
+    background:linear-gradient(135deg,var(--violet),var(--violet-700));color:#fff;font-size:15px;font-weight:700;
+    font-family:inherit;box-shadow:0 12px 26px -8px rgba(175,114,255,.6);transition:transform .08s,filter .15s}
+  button:hover{filter:brightness(1.05)} button:active{transform:translateY(1px)}
+  button:disabled{opacity:.65;cursor:default;filter:none}
+  .msg{margin-top:20px;padding:13px 15px;border-radius:14px;font-size:14px;line-height:1.6;display:none}
+  .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid #bfe6cf}
+  .msg.err{display:block;background:var(--err-bg);color:var(--err);border:1px solid #f3c9c9}
+  .foot{margin-top:22px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="logo">زد</div>
+    <div>
+      <b>اختبار الثيمات</b>
+      <span>فحص آلي شامل قبل النشر</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>شغّل اختبار ثيمك</h1>
+    <p class="sub">حط راب

@@ -1,0 +1,10 @@
+node_modules/
+__pycache__/
+playwright-report/
+results/
+test-results/
+validate.json
+*.pyc
+sections.json
+out/
+runs/

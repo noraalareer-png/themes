@@ -1,0 +1,83 @@
+name: Theme QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_base:
+        description: "Preview host base, e.g. https://i1o0np.dev.zid.store"
+        required: true
+      theme_id:
+        description: "Theme id (uuid)"
+        required: true
+      report_to:
+        description: "Email to receive the report"
+        required: false
+      theme_name:
+        description: "Theme name / host"
+        required: false
+  repository_dispatch:
+    types: [theme_submitted]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: theme-qa-${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}
+  cancel-in-progress: false
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    env:
+      PREVIEW_BASE: ${{ github.event.inputs.preview_base || github.event.client_payload.preview_base }}
+      THEME_ID: ${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}
+      THEME_NAME: ${{ github.event.inputs.theme_name || github.event.client_payload.theme_name }}
+      REPORT_TO: ${{ github.event.inputs.report_to || github.event.client_payload.report_to }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install beautifulsoup4
+
+      # Layer 1 - structural gate (writes runs/<theme>/validate.json)
+      - name: Structural validation (/validate)
+        continue-on-error: true
+        run: python validate_check.py --preview "$PREVIEW_BASE" --theme "$THEME_ID"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci || npm install
+      - run: npx playwright install --with-deps chromium
+
+      # Layer 2 - functional / visual E2E (writes runs/<theme>/)
+      - name: E2E tests
+        continue-on-error: true
+        run: npx playwright test
+
+      # Build the single-file HTML report and email it to the requester (Resend)
+      - name: Build report
+        run: node scripts/build_report.js "$THEME_ID"
+      - name: Email report
+        run: node scripts/email_report.js "$THEME_ID"
+
+      # Also publish the full report to GitHub Pages
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: runs/${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}/playwright-report
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+
+      # Mark the run red/green
+      - name: Gate
+        run: |
+          node -e "const fs=require('fs');const id=process.env.THEME_ID;const base='runs/'+id;const v=fs.existsSync(base+'/validate.json')?require('./'+base+'/validate.json'):{passed_gate:true};const r=fs.existsSync(base+'/results.json')?require('./'+base+'/results.json'):{suites:[]};let failed=0;const walk=s=>{(s.specs||[]).forEach(sp=>sp.tests.forEach(t=>{const st=t.results?.[t.results.length-1]?.status;if(st&&st!=='passed'&&st!=='skipped'&&st!=='expected')failed++;}));(s.suites||[]).forEach(walk)};(r.suites||[]).forEach(walk);if(v.passed_gate===false||failed>0){console.error('QA gate failed');process.exit(1)}console.log('QA gate passed')"

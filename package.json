@@ -1,0 +1,17 @@
+{
+  "name": "zid-theme-qa",
+  "version": "0.1.0",
+  "description": "Automated QA for Zid (Vitrin) partner themes: structural gate + functional/visual E2E + report/email/CI.",
+  "type": "module",
+  "scripts": {
+    "validate": "python3 validate_check.py",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "node scripts/build_report.js",
+    "email-report": "node scripts/email_report.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "nodemailer": "^6.10.1"
+  }
+}
