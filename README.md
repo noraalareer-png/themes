@@ -45,3 +45,4 @@ Reliable functional assertions need **known store data** (a product with variant
 out-of-stock item, a valid + invalid coupon, a 3-level category, a bundle...). Today each
 theme previews against the partner's own dev store, so data varies. See `DESIGN.md` ->
 "Fixture store" for the recommendation.
+"# themes" 
