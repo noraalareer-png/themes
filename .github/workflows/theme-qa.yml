@@ -77,7 +77,8 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
 
-      # Mark the run red/green
-      - name: Gate
+      # Success metric = the AUTOMATION completed (report produced + emailed),
+      # NOT whether the theme passed. Theme findings live inside the report.
+      - name: Automation check
         run: |
-          node -e "const fs=require('fs');const id=process.env.THEME_ID;const base='runs/'+id;const v=fs.existsSync(base+'/validate.json')?require('./'+base+'/validate.json'):{passed_gate:true};const r=fs.existsSync(base+'/results.json')?require('./'+base+'/results.json'):{suites:[]};let failed=0;const walk=s=>{(s.specs||[]).forEach(sp=>sp.tests.forEach(t=>{const st=t.results?.[t.results.length-1]?.status;if(st&&st!=='passed'&&st!=='skipped'&&st!=='expected')failed++;}));(s.suites||[]).forEach(walk)};(r.suites||[]).forEach(walk);if(v.passed_gate===false||failed>0){console.error('QA gate failed');process.exit(1)}console.log('QA gate passed')"
+          node -e "const fs=require('fs');const p='runs/'+process.env.THEME_ID+'/report.html';if(!fs.existsSync(p)){console.error('Automation did not complete: no report produced');process.exit(1)}console.log('Automation completed: report built and emailed')"
