@@ -8,24 +8,24 @@
 //   SMTP:    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS   [local Gmail etc.]
 import fs from 'fs';
 import { execSync } from 'child_process';
-
+ 
 const env = process.env;
 const themeId = env.THEME_ID || process.argv[2] || 'default';
 const base = `runs/${themeId}`;
-
+ 
 // (re)build the report so it's always fresh
 try { execSync(`node scripts/build_report.js ${themeId}`, { stdio: 'inherit' }); }
 catch (e) { console.error('build_report failed:', e.message); }
-
+ 
 const reportPath = `${base}/report.html`;
 if (!fs.existsSync(reportPath)) {
   console.error(`No report at ${reportPath}. Run "npx playwright test" first.`);
   process.exit(1);
 }
-
+ 
 // read the report once, up front (used by both send paths)
 const html = fs.readFileSync(reportPath, 'utf-8');
-
+ 
 // derive pass/fail for the subject
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return null; } };
 const v = read(`${base}/validate.json`);
@@ -43,13 +43,13 @@ if (pw?.suites) {
 }
 const overall = failed === 0 && (v ? v.passed_gate !== false : true);
 const subject = `[Theme QA] ${overall ? 'PASS' : 'FAIL'} — ${themeId}`;
-
+ 
 const to = env.REPORT_TO;
 if (!to) {
   console.log(`\nREPORT_TO not set. Report ready at: ${reportPath}`);
   process.exit(0);
 }
-
+ 
 // --- Option A: Resend ---
 if (env.RESEND_API_KEY) {
   const from = env.EMAIL_FROM || 'Theme QA <onboarding@resend.dev>';
@@ -67,7 +67,7 @@ if (env.RESEND_API_KEY) {
   console.error(`Resend error ${r.status}: ${out.slice(0, 300)}`);
   process.exit(1);
 }
-
+ 
 // --- Option B: SMTP ---
 if (!env.SMTP_HOST) {
   console.log(`\nNo email service configured. Report ready at: ${reportPath}\nSet RESEND_API_KEY (+EMAIL_FROM), or SMTP_*, to send to ${to}.`);
@@ -86,3 +86,4 @@ await t.sendMail({
   attachments: [{ filename: `theme-qa-${themeId}.html`, path: reportPath }],
 });
 console.log(`Sent report for ${themeId} to ${to}  (${subject})`);
+ 
