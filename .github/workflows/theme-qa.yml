@@ -20,8 +20,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: theme-qa-${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}
@@ -30,8 +28,6 @@ concurrency:
 jobs:
   qa:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
     env:
       PREVIEW_BASE: ${{ github.event.inputs.preview_base || github.event.client_payload.preview_base }}
       THEME_ID: ${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}
@@ -69,13 +65,13 @@ jobs:
       - name: Email report
         run: node scripts/email_report.js "$THEME_ID"
 
-      # Also publish the full report to GitHub Pages
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      # Keep the report as a downloadable artifact on the run (optional)
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: runs/${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}/playwright-report
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+          name: theme-qa-report
+          path: runs/${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}/report.html
+          if-no-files-found: warn
 
       # Success metric = the AUTOMATION completed (report produced + emailed),
       # NOT whether the theme passed. Theme findings live inside the report.
