@@ -43,7 +43,6 @@ jobs:
           python-version: "3.11"
       - run: pip install beautifulsoup4
 
-      # Layer 1 - structural gate (writes runs/<theme>/validate.json)
       - name: Structural validation (/validate)
         continue-on-error: true
         run: python validate_check.py --preview "$PREVIEW_BASE" --theme "$THEME_ID"
@@ -54,18 +53,15 @@ jobs:
       - run: npm ci || npm install
       - run: npx playwright install --with-deps chromium
 
-      # Layer 2 - functional / visual E2E (writes runs/<theme>/)
       - name: E2E tests
         continue-on-error: true
         run: npx playwright test
 
-      # Build the single-file HTML report and email it to the requester (Resend)
       - name: Build report
         run: node scripts/build_report.js "$THEME_ID"
       - name: Email report
         run: node scripts/email_report.js "$THEME_ID"
 
-      # Keep the report as a downloadable artifact on the run (optional)
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
@@ -73,8 +69,6 @@ jobs:
           path: runs/${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}/report.html
           if-no-files-found: warn
 
-      # Success metric = the AUTOMATION completed (report produced + emailed),
-      # NOT whether the theme passed. Theme findings live inside the report.
       - name: Automation check
         run: |
-          node -e "const fs=require('fs');const p='runs/'+process.env.THEME_ID+'/report.html';if(!fs.existsSync(p)){console.error('Automation did not complete: no report produced');process.exit(1)}console.log('Automation completed: report built and emailed')"
+          node -e "const fs=require('fs');const p='runs/'+process.env.THEME_ID+'/report.html';if(!fs.existsSync(p)){console.error('Automation did not complete');process.exit(1)}console.log('Automation completed: report built and emailed')"
