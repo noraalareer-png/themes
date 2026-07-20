@@ -8,60 +8,111 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Zid design tokens (from brand build-guide) */
   :root{
-    --ink:#1f0433;        /* deep plum text */
-    --plum:#3c1c54;       /* secondary plum */
-    --violet:#af72ff;     /* brand accent */
-    --violet-700:#8b4dee; /* hover */
-    --bg:#f7f4fc;
-    --card:#ffffff;
-    --muted:#6b6478;
-    --border:#ece7f5;
-    --ok:#1f7a4d; --ok-bg:#e9f7ef;
-    --err:#c02b2b; --err-bg:#fdecec;
+    --white:#FFFFFF; --neutral:#F5F4F6; --silver:#E7E2EC;
+    --dark:#1F0433; --lavender:#A974FF; --dark-lavender:#3B1C54;
+    --border:#D9CEE8; --muted:rgba(31,4,51,.55);
+    --ok:#1f7a4d; --ok-bg:#e9f7ef; --err:#c02b2b; --err-bg:#fdecec;
+    --radius-card:28px; --radius-input:14px;
   }
-  *{box-sizing:border-box}
-  html,body{margin:0}
+  *{box-sizing:border-box} html,body{margin:0}
   body{
     font-family:'IBM Plex Sans Arabic',system-ui,'Segoe UI',Tahoma,sans-serif;
-    background:radial-gradient(1200px 500px at 100% -10%, #efe6ff 0%, var(--bg) 45%) no-repeat, var(--bg);
-    color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+    background:var(--neutral); color:var(--dark);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px;
   }
-  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
-  .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--violet),var(--plum));
-    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;box-shadow:0 8px 20px rgba(175,114,255,.35)}
-  .brand b{font-size:18px}
-  .brand span{color:var(--muted);font-size:13px;display:block;margin-top:-2px}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:22px;max-width:520px;width:100%;
-    padding:34px 32px;box-shadow:0 24px 60px -30px rgba(31,4,51,.35)}
-  h1{font-size:22px;margin:0 0 6px;font-weight:700}
-  p.sub{color:var(--muted);margin:0 0 26px;font-size:14px;line-height:1.7}
-  label{display:block;font-size:13px;font-weight:600;margin:18px 0 7px}
-  input{width:100%;padding:13px 15px;border-radius:14px;border:1.5px solid var(--border);background:#fcfbff;
-    color:var(--ink);font-size:14px;font-family:inherit;transition:border-color .15s,box-shadow .15s}
-  input::placeholder{color:#b3adc2}
-  input:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 4px rgba(175,114,255,.15)}
-  .hint{font-size:12px;color:var(--muted);margin-top:6px}
-  button{width:100%;margin-top:26px;padding:14px;border:0;border-radius:9999px;cursor:pointer;
-    background:linear-gradient(135deg,var(--violet),var(--violet-700));color:#fff;font-size:15px;font-weight:700;
-    font-family:inherit;box-shadow:0 12px 26px -8px rgba(175,114,255,.6);transition:transform .08s,filter .15s}
-  button:hover{filter:brightness(1.05)} button:active{transform:translateY(1px)}
-  button:disabled{opacity:.65;cursor:default;filter:none}
-  .msg{margin-top:20px;padding:13px 15px;border-radius:14px;font-size:14px;line-height:1.6;display:none}
+  /* soft lavender glow, Zid-style */
+  body::before{content:"";position:fixed;inset:0;z-index:-1;
+    background:radial-gradient(760px 380px at 100% -8%, rgba(169,116,255,.20), transparent 60%),
+               radial-gradient(620px 320px at -10% 110%, rgba(59,28,84,.10), transparent 55%);}
+
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand .mark{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    background:var(--lavender);color:var(--dark);font-weight:700;font-size:22px;
+    box-shadow:0 10px 24px -6px rgba(169,116,255,.55)}
+  .brand .t{font-weight:700;font-size:17px;color:var(--dark)}
+  .brand .s{font-size:12.5px;color:var(--muted);margin-top:-2px}
+
+  .card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-card);
+    max-width:520px;width:100%;padding:36px 34px;box-shadow:0 30px 70px -40px rgba(31,4,51,.4)}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.10em;color:var(--lavender);margin-bottom:10px}
+  h1{font-size:34px;line-height:1.25;margin:0 0 10px;font-weight:700;color:var(--dark)}
+  p.sub{color:var(--muted);margin:0 0 26px;font-size:15px;line-height:1.75}
+
+  label{display:block;font-size:14px;font-weight:600;margin:18px 0 8px;color:var(--dark)}
+  input{width:100%;padding:14px 16px;border-radius:var(--radius-input);border:1.5px solid var(--border);
+    background:var(--white);color:var(--dark);font-size:14px;font-family:inherit;
+    transition:border-color .15s, box-shadow .15s}
+  input::placeholder{color:#b3a9c4}
+  input:focus{outline:none;border-color:var(--lavender);box-shadow:0 0 0 4px rgba(169,116,255,.16)}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:7px}
+  .hint code{background:var(--silver);padding:1px 6px;border-radius:6px;font-size:12px}
+
+  button{width:100%;margin-top:28px;height:54px;border:0;border-radius:9999px;cursor:pointer;
+    background:var(--lavender);color:var(--dark);font-size:16px;font-weight:700;font-family:inherit;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    box-shadow:0 14px 30px -10px rgba(169,116,255,.7);transition:transform .08s, filter .15s}
+  button:hover{filter:brightness(1.03)} button:active{transform:translateY(1px)}
+  button:disabled{opacity:.6;cursor:default;filter:none}
+  button svg{width:20px;height:20px}
+
+  .msg{margin-top:20px;padding:14px 16px;border-radius:var(--radius-input);font-size:14px;line-height:1.6;display:none}
   .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid #bfe6cf}
   .msg.err{display:block;background:var(--err-bg);color:var(--err);border:1px solid #f3c9c9}
-  .foot{margin-top:22px;color:var(--muted);font-size:12px;text-align:center}
+  .foot{margin-top:22px;color:var(--muted);font-size:12.5px;text-align:center}
 </style>
 </head>
 <body>
   <div class="brand">
-    <div class="logo">زد</div>
+    <div class="mark">زد</div>
     <div>
-      <b>اختبار الثيمات</b>
-      <span>فحص آلي شامل قبل النشر</span>
+      <div class="t">اختبار الثيمات</div>
+      <div class="s">فحص آلي شامل قبل النشر</div>
     </div>
   </div>
 
   <div class="card">
+    <div class="eyebrow">VITRIN THEME QA</div>
     <h1>شغّل اختبار ثيمك</h1>
-    <p class="sub">حط راب
+    <p class="sub">حط رابط الفاليديشن وإيميلك، ونشغّل الفحص الكامل — بنيوي ووظيفي وبصري — ويوصلك التقرير على إيميلك خلال دقائق.</p>
+
+    <form id="f">
+      <label for="link">رابط الفاليديشن</label>
+      <input id="link" name="link" type="url" required
+        placeholder="https://xxxx.dev.zid.store/validate/?theme=...">
+      <div class="hint">انسخه من صفحة معاينة الثيم — اللي فيه <code>?theme=</code>.</div>
+
+      <label for="email">الإيميل لاستلام التقرير</label>
+      <input id="email" name="email" type="email" required placeholder="you@example.com">
+
+      <button id="btn" type="submit">
+        تشغيل الاختبار
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+      </button>
+    </form>
+
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="foot">مبني على منصة زد</div>
+
+<script>
+const f=document.getElementById('f'),btn=document.getElementById('btn'),msg=document.getElementById('msg');
+const label=btn.innerHTML;
+f.addEventListener('submit',async(e)=>{
+  e.preventDefault(); msg.className='msg'; btn.disabled=true; btn.textContent='جارٍ التشغيل…';
+  try{
+    const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({link:f.link.value.trim(),email:f.email.value.trim()})});
+    const data=await r.json().catch(()=>({}));
+    if(r.ok&&data.ok){ msg.className='msg ok';
+      msg.textContent='✅ تم بدء الاختبار. بيوصلك التقرير على إيميلك خلال دقائق.'; f.reset(); }
+    else{ msg.className='msg err';
+      msg.textContent='❌ '+(data.error||'صار خطأ، تأكد من الرابط وحاول مرة ثانية.'); }
+  }catch(err){ msg.className='msg err'; msg.textContent='❌ تعذّر الاتصال بالخادم.'; }
+  finally{ btn.disabled=false; btn.innerHTML=label; }
+});
+</script>
+</body>
+</html>
