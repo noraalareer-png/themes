@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci || npm install
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
 
       # Layer 2 - functional / visual E2E (writes runs/<theme>/)
       - name: E2E tests
