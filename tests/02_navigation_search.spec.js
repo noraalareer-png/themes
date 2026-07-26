@@ -92,12 +92,15 @@ test.describe('Search', () => {
 
 test.describe('Filter & sort', () => {
   test('SORT-01 choosing a sort option updates the listing', async ({ page }) => {
-    await page.goto(themed('/products'));
+    // domcontentloaded (not networkidle) — some storefronts keep long-lived
+    // connections open on mobile, which made this test time out at 45s.
+    await page.goto(themed('/products'), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(800);
     const before = await page.locator('[class*="product"], article').allInnerTexts();
     const sort = page.locator('select[name*="sort" i], [class*="sort"] select, [aria-label*="sort" i]').first();
     if (await sort.count()) {
       await sort.selectOption({ index: 1 }).catch(() => {});
-      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1500);           // let the listing re-render
       const after = await page.locator('[class*="product"], article').allInnerTexts();
       expect(after.join('') !== before.join('') || after.length === before.length).toBeTruthy();
     } else {
