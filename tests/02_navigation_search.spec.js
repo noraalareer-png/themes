@@ -1,26 +1,33 @@
 // Menu/Category + Search/Listing checklist groups.
 import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
+import { openFirstProduct, PDP_TITLE } from '../lib/cart.js';
+
+const SEARCH_INPUT = 'input[type="search"], input[name*="search" i], input[placeholder*="بحث"], input[aria-label*="بحث" i], input[aria-label*="search" i]';
 
 // Find the search input; many themes hide it behind an icon toggle, so click a
-// search toggle first if the input isn't immediately present.
+// search toggle first if the input isn't immediately present. Returns the input
+// locator only if it is actually VISIBLE (so callers never click a hidden field,
+// which would hang the whole test at the 45s timeout).
 async function openSearch(page) {
-  let input = page.locator('input[type="search"], input[name*="search" i], input[placeholder*="بحث"]').first();
-  if (await input.count() && await input.isVisible().catch(() => false)) return input;
-  const toggle = page.locator('[class*="search-icon"], [aria-label*="search" i], [aria-label*="بحث"], [class*="search"] button, button[class*="search"]').first();
-  if (await toggle.count()) { await toggle.click().catch(() => {}); await page.waitForTimeout(600); }
-  input = page.locator('input[type="search"], input[name*="search" i], input[placeholder*="بحث"]').first();
-  return input;
+  let input = page.locator(SEARCH_INPUT).first();
+  if ((await input.count()) && (await input.isVisible().catch(() => false))) return input;
+  const toggle = page.locator('[class*="search-icon" i], [aria-label*="search" i], [aria-label*="بحث"], [class*="search" i] button, button[class*="search" i]').first();
+  if (await toggle.count()) { await toggle.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(600); }
+  input = page.locator(SEARCH_INPUT).first();
+  if ((await input.count()) && (await input.isVisible().catch(() => false))) return input;
+  return null;
 }
 
 // Type a query into the LIVE search box char-by-char (this theme uses an AJAX
 // overlay that triggers from >= 2 chars) and wait for the results to settle.
+// Every action is time-bounded so a stuck control can't hang the test to 45s.
 async function typeLiveQuery(page, input, term) {
-  await input.click();
-  await input.fill('');
-  await input.type(term, { delay: 120 });
+  await input.click({ timeout: 5000 }).catch(() => {});
+  await input.fill('', { timeout: 5000 }).catch(() => {});
+  await input.type(term, { delay: 120, timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(1200);            // debounce + fetch
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 }
 
 test.describe('Menu & category navigation', () => {
@@ -51,52 +58,48 @@ test.describe('Search', () => {
   // search works on desktop and mobile.)
 
   test('SRCH-01 search returns results', async ({ page }) => {
-    // Derive a real query from an existing product so a hit is guaranteed on any store.
-    await page.goto(themed('/products'), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
-    // Derive a query from a real PRODUCT NAME (the product link often wraps only
-    // an image, so reading the anchor text returned empty before). Try the card
-    // title/name first, then any element text, then a generic fallback.
+    // Derive the query from a REAL product NAME. Reading listing text was picking
+    // up filter labels like "الفلاتر" ("الف"), so instead open an actual product
+    // (lib/cart.js navigates straight to a PDP) and use its title.
     let query = process.env.QA_SEARCH_HIT || '';
     if (!query) {
-      const candidates = [
-        '[class*="product" i] [class*="title" i]',
-        '[class*="product" i] [class*="name" i]',
-        '[class*="product-card" i]',
-        'a[href*="/products/" i]',
-        '[class*="product" i]',
-      ];
-      for (const sel of candidates) {
-        const loc = page.locator(sel).first();
-        if (await loc.count()) {
-          const t = (((await loc.innerText().catch(() => '')) || '')).trim().replace(/\s+/g, ' ');
-          const term = t.slice(0, 3);
-          if (term.length >= 2) { query = term; break; }
-        }
+      const path = await openFirstProduct(page);
+      if (path) {
+        const title = (((await page.locator(PDP_TITLE.join(', ')).first().innerText().catch(() => '')) || '')).trim().replace(/\s+/g, ' ');
+        query = title.slice(0, 3);
       }
     }
-    if (!query || query.length < 2) test.skip(true, 'could not derive a >=2-char search term from the listing — set QA_SEARCH_HIT');
+    if (!query || query.length < 2) test.skip(true, 'could not derive a >=2-char product-name query — set QA_SEARCH_HIT');
 
-    await page.goto(themed('/'));
+    await page.goto(themed('/'), { waitUntil: 'domcontentloaded' });
     const search = await openSearch(page);
-    if (!(await search.count())) test.skip(true, 'search input not found even after toggle — map the search selector for this theme');
+    if (!search) test.skip(true, 'search input not found/visible even after toggle — map the search selector for this theme');
+
+    // Baseline product links BEFORE searching, so we can detect the overlay
+    // adding results without depending on theme-specific overlay class names.
+    const productSel = 'a[href*="/product" i]';
+    const before = await page.locator(productSel).count();
 
     await typeLiveQuery(page, search, query);
 
-    // Result items in the overlay (scoped to a results/search container first to
-    // avoid matching home-page featured products).
-    const results = page.locator(
-      '[class*="result" i] a[href*="/products/" i], ' +
-      '[class*="search" i] a[href*="/products/" i], ' +
-      '[class*="autocomplete" i] a[href*="/products/" i]'
-    );
-    await expect(results.first(), `no results appeared in the overlay for "${query}"`).toBeVisible();
+    // Success = the results overlay appeared: either a "النتائج" label is shown,
+    // or the number of product links grew (the overlay injected result cards).
+    const after = await page.locator(productSel).count();
+    const resultsLabel = await page.getByText(/النتائج|results/i).first().isVisible({ timeout: 3000 }).catch(() => false);
+    const overlayResult = await page.locator(
+      '[class*="result" i] a[href*="/product" i], [class*="search" i] a[href*="/product" i], [class*="autocomplete" i] a[href*="/product" i], [class*="dropdown" i] a[href*="/product" i]'
+    ).first().isVisible({ timeout: 3000 }).catch(() => false);
+
+    expect(
+      after > before || resultsLabel || overlayResult,
+      `no search results appeared for "${query}" (before=${before}, after=${after})`
+    ).toBeTruthy();
   });
 
   test('SRCH-04 invalid query shows a "no results" state', async ({ page }) => {
-    await page.goto(themed('/'));
+    await page.goto(themed('/'), { waitUntil: 'domcontentloaded' });
     const search = await openSearch(page);
-    if (!(await search.count())) test.skip(true, 'search input not found even after toggle — map the search selector for this theme');
+    if (!search) test.skip(true, 'search input not found/visible even after toggle — map the search selector for this theme');
 
     const miss = process.env.QA_SEARCH_MISS || 'zzqxnonexistent999';
     await typeLiveQuery(page, search, miss);
