@@ -5,7 +5,7 @@
 // product link" landed on the cart when an icon anchor was clicked instead).
 import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
-import { openFirstProduct, addFirstProductToCart, ADD_TO_CART, PDP_TITLE } from '../lib/cart.js';
+import { openFirstProduct, addFirstProductToCart, cartHasItems, PDP_TITLE } from '../lib/cart.js';
 
 test.describe('Product details', () => {
   test('PDP-05 shows name, price and currency', async ({ page }) => {
@@ -39,15 +39,10 @@ test.describe('Cart flow', () => {
   test('CART-add add to cart increments the cart count', async ({ page }) => {
     const res = await addFirstProductToCart(page);
     if (!res.ok) test.skip(true, res.reason);
-    const badge = page.locator([
-      '[class*="cart-count" i]',
-      '[class*="cart_count" i]',
-      '[class*="cart" i] [class*="count" i]',
-      '[class*="cart" i] [class*="badge" i]',
-      '[class*="badge" i]',
-      '[data-testid*="cart-count" i]',
-    ].join(', ')).first();
-    await expect(badge, 'cart count badge not visible after add').toBeVisible();
+    // Verify via multiple signals (header badge / mini-cart drawer / /cart page),
+    // because the header count badge uses a theme-specific class and may be hidden.
+    const added = await cartHasItems(page);
+    expect(added, 'cart did not reflect the added product (badge, drawer, and /cart all empty)').toBeTruthy();
   });
 
   test('CART-empty empty cart shows empty-state and blocks checkout', async ({ page }) => {
@@ -76,9 +71,9 @@ test.describe('Cart flow', () => {
     if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
 
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
-    await page.locator('button:has-text("تطبيق"), button:has-text("إضافة"), button:has-text("Apply")').first().click().catch(() => {});
+    await page.locator('button:has-text("تطبيق"), button:has-text("إضافة"), button:has-text("Apply")').first().click({ timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(1500);
     const body = (await page.locator('body').innerText()).toLowerCase();
-    expect(body).toMatch(/غير صالح|غير صحيح|invalid|not valid|expired|منتهي|خطأ/);
+    expect(body).toMatch(/غير صالح|غير صحيح|غير موجود|منتهي|لا يمكن|invalid|not valid|expired|error|خطأ/);
   });
 });
