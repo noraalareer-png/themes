@@ -52,12 +52,30 @@ test.describe('Search', () => {
 
   test('SRCH-01 search returns results', async ({ page }) => {
     // Derive a real query from an existing product so a hit is guaranteed on any store.
-    await page.goto(themed('/products'));
-    await page.waitForLoadState('networkidle');
-    const firstCard = page.locator('a[href*="/products/" i]').first();
-    const name = (((await firstCard.innerText().catch(() => '')) || '')).trim().replace(/\s+/g, ' ');
-    const query = process.env.QA_SEARCH_HIT || name.slice(0, 3);
-    if (!query || query.length < 2) test.skip(true, 'could not derive a >=2-char search term — set QA_SEARCH_HIT');
+    await page.goto(themed('/products'), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1000);
+    // Derive a query from a real PRODUCT NAME (the product link often wraps only
+    // an image, so reading the anchor text returned empty before). Try the card
+    // title/name first, then any element text, then a generic fallback.
+    let query = process.env.QA_SEARCH_HIT || '';
+    if (!query) {
+      const candidates = [
+        '[class*="product" i] [class*="title" i]',
+        '[class*="product" i] [class*="name" i]',
+        '[class*="product-card" i]',
+        'a[href*="/products/" i]',
+        '[class*="product" i]',
+      ];
+      for (const sel of candidates) {
+        const loc = page.locator(sel).first();
+        if (await loc.count()) {
+          const t = (((await loc.innerText().catch(() => '')) || '')).trim().replace(/\s+/g, ' ');
+          const term = t.slice(0, 3);
+          if (term.length >= 2) { query = term; break; }
+        }
+      }
+    }
+    if (!query || query.length < 2) test.skip(true, 'could not derive a >=2-char search term from the listing — set QA_SEARCH_HIT');
 
     await page.goto(themed('/'));
     const search = await openSearch(page);
