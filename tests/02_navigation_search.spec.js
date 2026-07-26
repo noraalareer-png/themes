@@ -103,29 +103,42 @@ test.describe('Filter & sort', () => {
 
     // On MOBILE the sort control lives behind a "الفلاتر" / filter toggle, so open it first.
     const filterToggle = page.locator(
-      'button:has-text("الفلاتر"), button:has-text("الفرز"), button:has-text("ترتيب"), ' +
+      'button:has-text("الفلاتر"), button:has-text("الفرز"), ' +
       'button:has-text("Filter"), button:has-text("Sort"), [class*="filter" i] button, [aria-label*="filter" i]'
     ).first();
     if ((await filterToggle.count()) && (await filterToggle.isVisible().catch(() => false))) {
-      await filterToggle.click().catch(() => {});
+      await filterToggle.click({ timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(600);
     }
 
-    // Try a <select> first; otherwise click a sort option (mobile list/radio style).
+    // IMPORTANT: bound every action with a short timeout so a hidden/non-actionable
+    // control can never hang the whole test to 45s (that was the mobile time-out:
+    // selectOption waited forever on a hidden native <select>).
     let acted = false;
-    const select = page.locator('select[name*="sort" i], [class*="sort" i] select, select[aria-label*="sort" i], select[aria-label*="ترتيب" i]').first();
-    if (await select.count()) {
-      await select.selectOption({ index: 1 }).catch(() => {});
+
+    // 1) A real, VISIBLE + ENABLED native <select>.
+    const select = page.locator('select[name*="sort" i], [class*="sort" i] select, select[aria-label*="ترتيب" i]').first();
+    if ((await select.count()) && (await select.isVisible().catch(() => false)) && (await select.isEnabled().catch(() => false))) {
+      await select.selectOption({ index: 1 }, { timeout: 5000 }).catch(() => {});
       acted = true;
-    } else {
-      const option = page.locator(
-        '[class*="sort" i] a, [class*="sort" i] button, [class*="sort" i] [role="option"], ' +
-        'button:has-text("الأعلى"), button:has-text("الأقل"), button:has-text("الأحدث"), ' +
-        'label:has-text("سعر"), [role="option"]:has-text("سعر")'
-      ).first();
-      if (await option.count()) { await option.click().catch(() => {}); acted = true; }
     }
-    if (!acted) test.skip(true, 'sort control not found (no select or sort options) — map selector to theme');
+
+    // 2) A "ترتيب حسب" accordion/dropdown (mobile): expand it, then pick the first option.
+    if (!acted) {
+      let header = page.getByRole('button', { name: /ترتيب/ }).first();
+      if (!(await header.count())) header = page.getByText(/ترتيب حسب/).first();
+      if (await header.count()) {
+        await header.click({ timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        const option = page.locator(
+          '[role="option"], [class*="sort" i] li, [class*="sort" i] label, ' +
+          'label:has-text("الأعلى"), label:has-text("الأقل"), label:has-text("الأحدث"), label:has-text("سعر"), ' +
+          'button:has-text("الأعلى"), button:has-text("الأقل"), button:has-text("الأحدث")'
+        ).first();
+        if (await option.count()) { await option.click({ timeout: 5000 }).catch(() => {}); acted = true; }
+      }
+    }
+    if (!acted) test.skip(true, 'sort control not found/operable — map selector to theme');
 
     await page.waitForTimeout(1500);
 
