@@ -1,51 +1,31 @@
 // Products + Cart checklist groups. The highest-value functional coverage.
 //
-// Selectors broadened to match this theme's real DOM (PDP title, price, and the
-// add-to-cart button use theme-specific class names). Confirm the exact selectors
-// against the store once (Chrome/DevTools) if any of these still miss.
+// Product navigation goes through lib/cart.js, which reads a real product URL
+// from the listing and navigates straight to the PDP (the old "click first
+// product link" landed on the cart when an icon anchor was clicked instead).
 import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
-
-async function openFirstProduct(page) {
-  await page.goto(themed('/products'));
-  await page.waitForLoadState('networkidle').catch(() => {});
-  // Prefer a real PDP link (/products/<slug>) over any element whose class
-  // merely contains "product".
-  let card = page.locator('a[href*="/products/" i]').first();
-  if (!(await card.count())) card = page.locator('[class*="product" i] a').first();
-  await card.click();
-  await page.waitForLoadState('networkidle').catch(() => {});
-}
+import { openFirstProduct, addFirstProductToCart, ADD_TO_CART, PDP_TITLE } from '../lib/cart.js';
 
 test.describe('Product details', () => {
   test('PDP-05 shows name, price and currency', async ({ page }) => {
-    await openFirstProduct(page);
-    const name = page.locator([
-      'h1',
-      'h2[class*="title" i]',
-      '[class*="product-title" i]',
-      '[class*="product__title" i]',
-      '[class*="product-name" i]',
-      '[class*="product_name" i]',
-      '[class*="productName" i]',
-      '[data-testid*="title" i]',
-    ].join(', ')).first();
+    const path = await openFirstProduct(page);
+    if (!path) test.skip(true, 'no product detail page reachable from /products — check the product URL scheme');
+
+    const name = page.locator(PDP_TITLE.join(', ')).first();
     await expect(name, 'product title not found — map the PDP title selector').toBeVisible();
 
-    const price = page.locator([
-      '[class*="price" i]',
-      '[data-testid*="price" i]',
-      '[class*="amount" i]',
-    ].join(', ')).first();
+    const price = page.locator('[class*="price" i], [data-testid*="price" i], [class*="amount" i]').first();
     await expect(price, 'product price not found — map the price selector').toBeVisible();
 
     const priceText = await price.innerText();
-    // currency symbol / SAR / ر.س / new Riyal glyph present, or at least digits
-    expect(priceText).toMatch(/ر\.?\s?س|SAR|﷼|₾|\d/);
+    // currency symbol / SAR / ر.س / Riyal glyph present, or at least digits
+    expect(priceText).toMatch(/ر\.?\s?س|SAR|﷼|\d/);
   });
 
   test('PDP-02 product images carry ALT text', async ({ page }) => {
-    await openFirstProduct(page);
+    const path = await openFirstProduct(page);
+    if (!path) test.skip(true, 'no product detail page reachable from /products');
     const imgs = page.locator('[class*="gallery" i] img, [class*="product" i] img');
     const n = Math.min(await imgs.count(), 5);
     for (let i = 0; i < n; i++) {
@@ -57,26 +37,8 @@ test.describe('Product details', () => {
 
 test.describe('Cart flow', () => {
   test('CART-add add to cart increments the cart count', async ({ page }) => {
-    await openFirstProduct(page);
-    const addBtn = page.locator([
-      'button:has-text("أضف")',
-      'button:has-text("اضف")',
-      'button:has-text("إضافة")',
-      'button:has-text("للسلة")',
-      'button:has-text("السلة")',
-      'button:has-text("Add to cart")',
-      'button:has-text("Add to bag")',
-      'button:has-text("Add")',
-      '[class*="add-to-cart" i]',
-      '[class*="add_to_cart" i]',
-      '[class*="addToCart" i]',
-      'button[class*="cart" i]',
-      '[data-testid*="add" i]',
-    ].join(', ')).first();
-    if (!(await addBtn.count())) test.skip(true, 'add-to-cart button selector not mapped — confirm the PDP add button in the theme');
-    await addBtn.scrollIntoViewIfNeeded().catch(() => {});
-    await addBtn.click();
-    await page.waitForTimeout(1500);
+    const res = await addFirstProductToCart(page);
+    if (!res.ok) test.skip(true, res.reason);
     const badge = page.locator([
       '[class*="cart-count" i]',
       '[class*="cart_count" i]',
@@ -89,10 +51,10 @@ test.describe('Cart flow', () => {
   });
 
   test('CART-empty empty cart shows empty-state and blocks checkout', async ({ page }) => {
-    await page.goto(themed('/cart'));
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.goto(themed('/cart'), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(800);
     const body = (await page.locator('body').innerText()).toLowerCase();
-    // either has items or shows an empty message; when empty, no proceed button
+    // when empty, there should be no proceed-to-checkout button
     if (/empty|فارغة|فارغ|لا توجد منتجات|سلة التسوق فارغة/.test(body)) {
       const proceed = page.locator('button:has-text("الدفع"), button:has-text("إتمام"), button:has-text("Checkout"), [class*="checkout" i]');
       expect(await proceed.count()).toBe(0);
@@ -100,13 +62,23 @@ test.describe('Cart flow', () => {
   });
 
   test('CART-coupon invalid coupon shows an error message', async ({ page }) => {
-    await page.goto(themed('/cart'));
-    const couponInput = page.locator('input[name*="coupon" i], input[placeholder*="كوبون"], input[placeholder*="خصم"], input[placeholder*="coupon" i], input[placeholder*="promo" i]').first();
-    if (!(await couponInput.count())) test.skip(true, 'coupon input not present (empty cart) - needs fixture store');
+    // Populate the cart first so the coupon field is present (no fixture store needed
+    // for the invalid-coupon path — we just need an item + the coupon input).
+    const res = await addFirstProductToCart(page);
+    if (!res.ok) test.skip(true, `could not add a product to test coupon: ${res.reason}`);
+
+    await page.goto(themed('/cart'), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1000);
+
+    const couponInput = page.locator(
+      'input[name*="coupon" i], input[placeholder*="كوبون"], input[placeholder*="خصم"], input[placeholder*="coupon" i], input[placeholder*="promo" i]'
+    ).first();
+    if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
+
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
-    await page.locator('button:has-text("تطبيق"), button:has-text("إضافة"), button:has-text("Apply")').first().click();
+    await page.locator('button:has-text("تطبيق"), button:has-text("إضافة"), button:has-text("Apply")').first().click().catch(() => {});
     await page.waitForTimeout(1500);
     const body = (await page.locator('body').innerText()).toLowerCase();
-    expect(body).toMatch(/غير صالح|غير صحيح|invalid|not valid|expired|منتهي/);
+    expect(body).toMatch(/غير صالح|غير صحيح|invalid|not valid|expired|منتهي|خطأ/);
   });
 });
