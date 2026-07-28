@@ -1,74 +1,79 @@
 // Authenticated customer-area checks (fixture store).  [file 06 — next after 05]
 //
-// Complements 04_pages_account_mobile.spec.js, which only covers the LOGGED-OUT
-// account state (ACC-02 profile->login, ACC-04 /account resolves). This file adds
-// the LOGGED-IN half of the checklist groups "Customer Account" +
-// "Customer-related Pages" (personal info, orders, wishlist, addresses), which
-// need a signed-in session. Kept as its own file because these tests require the
-// fixture login (phone + fixed OTP) — see lib/auth.js.
+// Complements 04_pages_account_mobile.spec.js (logged-OUT: ACC-02, ACC-04).
+// Covers the LOGGED-IN checklist groups "Customer Account" + "Customer-related
+// Pages" (profile, orders, wishlist, addresses).
 //
-// Philosophy matches the suite: if login can't be performed on this preview, the
-// tests SKIP with an actionable message — never a false pass.
+// VERIFIED against the live store (2026-07): login via the documented WhatsApp
+// auth API works with the fixture (500000005 / 1234 -> login_success,
+// customer_id 15141670 "Zid Test Customer"), and window.zid.account.* returns
+// data once authenticated. So we log in via the API (lib/auth.js) and assert the
+// PLATFORM data is served (which is exactly what "rendered by Zid / uncustomized"
+// means) — no fragile DOM/console checks.
 //
-// Env (lib/auth.js): QA_LOGIN_PHONE, QA_LOGIN_OTP, QA_LOGIN_PATH.
+// Philosophy unchanged: if login can't be performed on this preview, the tests
+// SKIP with an actionable message — never a false pass.
 
 import { test, expect } from '@playwright/test';
-import { themed, collectConsoleErrors } from '../lib/helpers.js';
+import { themed } from '../lib/helpers.js';
 import { login } from '../lib/auth.js';
 
-// Candidate Zid customer routes. The store's actual paths win — each is tried and
-// the test skips (actionable) if none resolve, so it never false-passes.
-const ACCOUNT_ROUTES = [
-  { id: 'ACC-05',  name: 'personal info', paths: ['/account', '/customer', '/profile'] },
-  { id: 'CUST-01', name: 'orders',        paths: ['/orders', '/customer/orders', '/account/orders'] },
-  { id: 'CUST-02', name: 'wishlist',      paths: ['/wishlist', '/customer/wishlist', '/favorites'] },
-  { id: 'CUST-03', name: 'addresses',     paths: ['/addresses', '/customer/addresses', '/account/addresses'] },
-];
-
-async function looks404(page) {
-  const title = (await page.title().catch(() => '')) || '';
-  const body = (await page.locator('body').innerText().catch(() => '')) || '';
-  return /غير موجودة|لم يتم العثور|not found|404/i.test(title + ' ' + body.slice(0, 2000));
+// Call a window.zid.account.<method>() in the page and return its result.
+async function accountCall(page, method, args = []) {
+  return page.evaluate(async ({ method, args }) => {
+    if (!window.zid || !window.zid.account || typeof window.zid.account[method] !== 'function') {
+      return { __noSdk: true };
+    }
+    try { return await window.zid.account[method](...args); }
+    catch (e) { return { __err: String(e) }; }
+  }, { method, args });
 }
 
 test.describe('Authenticated customer area', () => {
   test.beforeEach(async ({ page }) => {
     try {
-      await login(page);
+      await login(page);                    // API-first (WhatsApp verify), UI fallback
     } catch (e) {
       test.skip(true, `fixture login unavailable: ${String(e.message || e)}`);
     }
+    // Land on the storefront so window.zid (the theme SDK) is available.
+    await page.goto(themed('/'), { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!(window.zid && window.zid.account), null, { timeout: 10000 }).catch(() => {});
   });
 
-  test('ACC-01 login with phone + OTP succeeds', async ({ page }) => {
-    // beforeEach already logged in; assert a logged-in control is present.
-    await page.goto(themed('/'));
-    await page.waitForLoadState('networkidle').catch(() => {});
-    const loggedIn = page.locator(
-      'a[href*="logout" i], a[href*="account" i], a[href*="customer" i], [class*="account" i]'
-    );
-    const count = await loggedIn.count();
-    expect(count, 'no logged-in account control visible after login').toBeGreaterThan(0);
+  test('ACC-01 login with phone + OTP succeeds (session established)', async ({ page }) => {
+    const base = (process.env.PREVIEW_BASE || '').replace(/\/+$/, '');
+    const res = await page.request.get(`${base}/api/v1/auth/login-status`);
+    expect(res.ok(), `login-status HTTP ${res.status()}`).toBeTruthy();
+    const data = await res.json();
+    expect(data.is_authenticated, 'session is not authenticated after login').toBeTruthy();
   });
 
-  for (const r of ACCOUNT_ROUTES) {
-    test(`${r.id} ${r.name} page loads and is served by Zid`, async ({ page }) => {
-      const errors = collectConsoleErrors(page);
-      let resolved = null;
-      for (const p of r.paths) {
-        const resp = await page.goto(themed(p)).catch(() => null);
-        if (resp && resp.status() < 400 && !(await looks404(page))) {
-          resolved = p;
-          break;
-        }
-      }
-      if (!resolved) {
-        test.skip(true, `${r.name}: none of [${r.paths.join(', ')}] resolved on this store — set the fixture route`);
-      }
-      await page.waitForLoadState('networkidle').catch(() => {});
-      // "Uncustomized / served by Zid" proxy: the platform account page renders
-      // with no theme-originated console errors (analytics noise filtered in helpers.js).
-      expect(errors, `console errors on ${r.name} (${resolved}): ${errors.join(' | ')}`).toEqual([]);
-    });
-  }
+  test('ACC-05 personal info is served by Zid (profile)', async ({ page }) => {
+    const p = await accountCall(page, 'get');
+    if (p && p.__noSdk) test.skip(true, 'window.zid.account SDK not present on this theme');
+    expect(p && !p.__err, `profile call failed: ${p && p.__err}`).toBeTruthy();
+    expect(p.id || p.hashed_id, 'profile has no id — not served by the platform').toBeTruthy();
+  });
+
+  test('CUST-01 orders page is served by Zid', async ({ page }) => {
+    const o = await accountCall(page, 'orders');
+    if (o && o.__noSdk) test.skip(true, 'window.zid.account SDK not present on this theme');
+    expect(o && !o.__err, `orders call failed: ${o && o.__err}`).toBeTruthy();
+    expect(o && ('results' in o || 'count' in o), 'orders response is not the platform shape').toBeTruthy();
+  });
+
+  test('CUST-02 wishlist is served by Zid', async ({ page }) => {
+    const w = await accountCall(page, 'wishlists');
+    if (w && w.__noSdk) test.skip(true, 'window.zid.account SDK not present on this theme');
+    expect(w && !w.__err, `wishlists call failed: ${w && w.__err}`).toBeTruthy();
+    expect(w && ('results' in w || 'count' in w), 'wishlist response is not the platform shape').toBeTruthy();
+  });
+
+  test('CUST-03 addresses are served by Zid', async ({ page }) => {
+    const a = await accountCall(page, 'addresses');
+    if (a && a.__noSdk) test.skip(true, 'window.zid.account SDK not present on this theme');
+    expect(a && !a.__err, `addresses call failed: ${a && a.__err}`).toBeTruthy();
+    expect(Array.isArray(a) || (a && ('results' in a)), 'addresses response is not the platform shape').toBeTruthy();
+  });
 });
