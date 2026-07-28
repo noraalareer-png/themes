@@ -40,7 +40,21 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['iPhone 13'] } },
+    // Runs once: logs in and saves the customer session (see tests/auth.setup.js).
+    { name: 'setup', testMatch: /auth\.setup\.js/ },
+
+    // Real test projects depend on setup, and ignore the setup file itself.
+    {
+      name: 'desktop',
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.js/,
+    },
+    {
+      name: 'mobile',
+      use: { ...devices['iPhone 13'] },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.js/,
+    },
   ],
 });
