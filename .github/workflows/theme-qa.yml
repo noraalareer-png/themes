@@ -9,6 +9,9 @@ on:
       theme_id:
         description: "Theme id (uuid)"
         required: true
+      preset_url:
+        description: "URL of the partner's preset export (.json) — attached on the submission UI"
+        required: false
       report_to:
         description: "Email to receive the report"
         required: false
@@ -33,12 +36,17 @@ jobs:
       THEME_ID: ${{ github.event.inputs.theme_id || github.event.client_payload.theme_id }}
       THEME_NAME: ${{ github.event.inputs.theme_name || github.event.client_payload.theme_name }}
       REPORT_TO: ${{ github.event.inputs.report_to || github.event.client_payload.report_to }}
+      PRESET_URL: ${{ github.event.inputs.preset_url || github.event.client_payload.preset_url }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       EMAIL_FROM: ${{ vars.EMAIL_FROM }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      # Fixture customer login for authenticated tests (optional; defaults live in lib/auth.js)
+      QA_LOGIN_PHONE: ${{ vars.QA_LOGIN_PHONE }}
+      QA_LOGIN_OTP: ${{ secrets.QA_LOGIN_OTP }}
+      QA_LOGIN_COUNTRY_CODE: ${{ vars.QA_LOGIN_COUNTRY_CODE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +59,26 @@ jobs:
       - name: Structural validation (/validate)
         continue-on-error: true
         run: python validate_check.py --preview "$PREVIEW_BASE" --theme "$THEME_ID"
+
+      # Section inventory (what the theme SHIPS) from /validate.
+      - name: Enumerate shipped sections
+        continue-on-error: true
+        run: python enumerate_sections.py --preview "$PREVIEW_BASE" --theme "$THEME_ID" --out "runs/$THEME_ID/sections_inventory.json"
+
+      # If the partner attached a preset, extract PLACED sections + run the coverage diff.
+      # sections.json (placed) is what tests/05_sections.spec.js reads (repo root).
+      - name: Section coverage (preset)
+        if: ${{ env.PRESET_URL != '' }}
+        continue-on-error: true
+        run: |
+          echo "Downloading preset from PRESET_URL"
+          curl -fsSL "$PRESET_URL" -o preset.json
+          python sections_from_preset.py preset.json --out sections.json
+          python sections_coverage.py \
+            --preset preset.json \
+            --validate "runs/$THEME_ID/sections_inventory.json" \
+            --out "runs/$THEME_ID/coverage.json"
+          # add --fail-on-missing above to gate on unplaced sections (policy decision)
 
       - uses: actions/setup-node@v4
         with:
