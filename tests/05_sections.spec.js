@@ -20,6 +20,15 @@ try {
   sections = [];
 }
 
+// STOPGAP: some sections render with a class that doesn't contain their slug, and
+// this theme emits NO data-section-type/data-section-id hooks (so class-guessing is
+// the only locator). Map slug -> extra class fragments to match those. The proper
+// fix is the theme emitting data-section-type="<slug>" (see HOOKS_CONTRACT.md), which
+// makes this map unnecessary.
+const CLASS_ALIASES = {
+  'payments-showcase': ['luxury-payments', 'payments-section'],
+};
+
 // Map a preset page path to a storefront route.
 function routeFor(page) {
   const map = {
@@ -50,10 +59,12 @@ test.describe('Section rendering coverage (from preset)', () => {
       await page.goto(themed(routeFor(s.page)));
       await page.waitForLoadState('networkidle');
 
+      const aliasSel = (CLASS_ALIASES[s.slug] || []).map((a) => `section[class*="${a}" i], [class*="${a}" i]`).join(', ');
       const hook = page.locator(
         (s.section_id ? `[data-section-id="${s.section_id}"], ` : '') +
         `[data-section-type="${s.slug}"], ` +
-        `section[class*="${s.slug}"], [class*="${s.slug}"]`
+        `section[class*="${s.slug}"], [class*="${s.slug}"]` +
+        (aliasSel ? ', ' + aliasSel : '')
       ).first();
 
       if (!(await hook.count())) {
