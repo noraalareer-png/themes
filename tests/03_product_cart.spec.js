@@ -62,12 +62,19 @@ test.describe('Cart flow', () => {
     const res = await addFirstProductToCart(page);
     if (!res.ok) test.skip(true, `could not add a product to test coupon: ${res.reason}`);
 
+    // The coupon field (كود الخصم) renders ONLY when the cart has items, so confirm
+    // the add actually persisted before looking for it (else it's a false skip).
+    const populated = await cartHasItems(page);
+    if (!populated) test.skip(true, 'cart empty after add — coupon field only shows with items');
+
     await page.goto(themed('/cart'), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle').catch(() => {});
 
     const couponInput = page.locator(
-      'input[name*="coupon" i], input[placeholder*="كوبون"], input[placeholder*="خصم"], input[placeholder*="coupon" i], input[placeholder*="promo" i]'
+      'input[name*="coupon" i], input[placeholder*="خصم"], input[placeholder*="كوبون"], input[placeholder*="هدايا"], input[placeholder*="coupon" i], input[placeholder*="promo" i]'
     ).first();
+    // Order summary can render a moment after the cart items — wait for it.
+    await couponInput.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
     if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
 
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
