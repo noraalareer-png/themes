@@ -4,21 +4,23 @@
 // Covers the LOGGED-IN checklist groups "Customer Account" + "Customer-related
 // Pages" (profile, orders, wishlist, addresses).
 //
-// VERIFIED against the live store (2026-07): login via the documented WhatsApp
-// auth API works with the fixture (500000005 / 1234 -> login_success,
-// customer_id 15141670 "Zid Test Customer"), and window.zid.account.* returns
-// data once authenticated. So we log in via the API (lib/auth.js) and assert the
-// PLATFORM data is served (which is exactly what "rendered by Zid / uncustomized"
-// means) — no fragile DOM/console checks.
+// SESSION REUSE: login happens ONCE in tests/auth.setup.js and is saved to
+// storageState; this spec reuses it (test.use below). That avoids logging in per
+// test, which previously hit HTTP 429 (rate limit) on the WhatsApp auth endpoint.
 //
-// Philosophy unchanged: if login can't be performed on this preview, the tests
-// SKIP with an actionable message — never a false pass.
+// VERIFIED against the live store (2026-07): the fixture (500000005 / 1234) logs
+// in and window.zid.account.* returns data. "Served by Zid / uncustomized" is
+// asserted via the platform SDK/endpoints, not fragile DOM/console checks.
+//
+// If the session wasn't established (login unavailable), the tests SKIP with a
+// clear message — never a false pass.
 
 import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
-import { login } from '../lib/auth.js';
+import { AUTH_STATE } from '../lib/authState.js';
 
-// Call a window.zid.account.<method>() in the page and return its result.
+test.use({ storageState: AUTH_STATE });
+
 async function accountCall(page, method, args = []) {
   return page.evaluate(async ({ method, args }) => {
     if (!window.zid || !window.zid.account || typeof window.zid.account[method] !== 'function') {
@@ -31,22 +33,24 @@ async function accountCall(page, method, args = []) {
 
 test.describe('Authenticated customer area', () => {
   test.beforeEach(async ({ page }) => {
-    try {
-      await login(page);                    // API-first (WhatsApp verify), UI fallback
-    } catch (e) {
-      test.skip(true, `fixture login unavailable: ${String(e.message || e)}`);
+    // Confirm the reused session is authenticated; if not, skip (don't false-pass).
+    const base = (process.env.PREVIEW_BASE || '').replace(/\/+$/, '');
+    const r = await page.request.get(`${base}/api/v1/auth/login-status`).catch(() => null);
+    const j = r && r.ok() ? await r.json().catch(() => ({})) : {};
+    if (!j.is_authenticated) {
+      test.skip(true, 'fixture session not established in auth.setup (login unavailable / rate-limited)');
     }
     // Land on the storefront so window.zid (the theme SDK) is available.
     await page.goto(themed('/'), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !!(window.zid && window.zid.account), null, { timeout: 10000 }).catch(() => {});
   });
 
-  test('ACC-01 login with phone + OTP succeeds (session established)', async ({ page }) => {
+  test('ACC-01 session is authenticated (fixture login)', async ({ page }) => {
     const base = (process.env.PREVIEW_BASE || '').replace(/\/+$/, '');
     const res = await page.request.get(`${base}/api/v1/auth/login-status`);
     expect(res.ok(), `login-status HTTP ${res.status()}`).toBeTruthy();
     const data = await res.json();
-    expect(data.is_authenticated, 'session is not authenticated after login').toBeTruthy();
+    expect(data.is_authenticated, 'session is not authenticated').toBeTruthy();
   });
 
   test('ACC-05 personal info is served by Zid (profile)', async ({ page }) => {
