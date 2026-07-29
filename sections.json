@@ -1,0 +1,101 @@
+[
+  {
+    "name": "sections/carousel.jinja",
+    "slug": "carousel",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "3707a591-3c4c-4401-8350-e92909868e4b",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/products.jinja",
+    "slug": "products",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "6de2a27f-2833-4c1e-bff5-c1ead64387e9",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/hero.jinja",
+    "slug": "hero",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "230fe99a-63d0-417e-a20e-2fe99dbb5e77",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/partners.jinja",
+    "slug": "partners",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "b0cb2e03-e94f-4026-97e4-7b6e887780ce",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/categories.jinja",
+    "slug": "categories",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "c3a1454a-c50c-4dd2-af57-cb5f2c2e74d7",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/countdown.jinja",
+    "slug": "countdown",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "fd4b9aed-73bb-46be-b351-237d5c2d2c10",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/video.jinja",
+    "slug": "video",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "1f65e33e-847f-4223-886c-fc58d319b9d5",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/logo-social.jinja",
+    "slug": "logo-social",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "4057414f-bb21-402d-92ed-9ea96a808378",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/benefits.jinja",
+    "slug": "benefits",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "3739b021-f614-40c0-afc0-1ff048de5170",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/payments-showcase.jinja",
+    "slug": "payments-showcase",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "24d8b682-ee2c-4311-89d7-fe852b2e02b7",
+    "order": null,
+    "display": true
+  },
+  {
+    "name": "sections/testimonials.jinja",
+    "slug": "testimonials",
+    "page": "templates/home.jinja",
+    "locale": "ar",
+    "section_id": "d375ae94-8a6a-4f7e-ab80-f658a29641c4",
+    "order": null,
+    "display": true
+  }
+]
