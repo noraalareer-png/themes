@@ -12,6 +12,9 @@ on:
       preset_url:
         description: "URL of the partner's preset export (.json) — attached on the submission UI"
         required: false
+      preset_b64:
+        description: "Base64 of the partner's preset JSON (sent inline by the submission form)"
+        required: false
       report_to:
         description: "Email to receive the report"
         required: false
@@ -37,6 +40,7 @@ jobs:
       THEME_NAME: ${{ github.event.inputs.theme_name || github.event.client_payload.theme_name }}
       REPORT_TO: ${{ github.event.inputs.report_to || github.event.client_payload.report_to }}
       PRESET_URL: ${{ github.event.inputs.preset_url || github.event.client_payload.preset_url }}
+      PRESET_B64: ${{ github.event.inputs.preset_b64 || github.event.client_payload.preset_b64 }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       EMAIL_FROM: ${{ vars.EMAIL_FROM }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
@@ -65,20 +69,31 @@ jobs:
         continue-on-error: true
         run: python enumerate_sections.py --preview "$PREVIEW_BASE" --theme "$THEME_ID" --out "runs/$THEME_ID/sections_inventory.json"
 
-      # If the partner attached a preset, extract PLACED sections + run the coverage diff.
+      # Section coverage: uses the partner's preset if available.
+      # Preset source, in order: (1) PRESET_URL from the submission payload/input
+      # (the dashboard attaches it — platform change, see SECTION_COVERAGE.md),
+      # (2) a local preset.json committed/placed in the repo (interim, works today).
       # sections.json (placed) is what tests/05_sections.spec.js reads (repo root).
       - name: Section coverage (preset)
-        if: ${{ env.PRESET_URL != '' }}
         continue-on-error: true
         run: |
-          echo "Downloading preset from PRESET_URL"
-          curl -fsSL "$PRESET_URL" -o preset.json
-          python sections_from_preset.py preset.json --out sections.json
-          python sections_coverage.py \
-            --preset preset.json \
-            --validate "runs/$THEME_ID/sections_inventory.json" \
-            --out "runs/$THEME_ID/coverage.json"
-          # add --fail-on-missing above to gate on unplaced sections (policy decision)
+          if [ -n "$PRESET_B64" ]; then
+            echo "Decoding preset from the submission form (base64)"
+            echo "$PRESET_B64" | base64 -d > preset.json || echo "WARN: preset decode failed"
+          elif [ -n "$PRESET_URL" ]; then
+            echo "Fetching preset from PRESET_URL"
+            curl -fsSL "$PRESET_URL" -o preset.json || echo "WARN: preset download failed"
+          fi
+          if [ -f preset.json ]; then
+            python sections_from_preset.py preset.json --out sections.json
+            python sections_coverage.py \
+              --preset preset.json \
+              --validate "runs/$THEME_ID/sections_inventory.json" \
+              --out "runs/$THEME_ID/coverage.json"
+            # add --fail-on-missing above to gate on unplaced sections (policy decision)
+          else
+            echo "No preset (PRESET_URL empty and no local preset.json) — section coverage skipped."
+          fi
 
       - uses: actions/setup-node@v4
         with:
