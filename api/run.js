@@ -1,18 +1,24 @@
 // Vercel serverless function.
-// Receives { link, email }, extracts preview base + theme id, and triggers the
-// GitHub Actions workflow (the heavy Playwright run happens there, not on Vercel).
+// Receives { link, email, preset? }, extracts preview base + theme id, and triggers
+// the GitHub Actions workflow (the heavy Playwright run happens there, not on Vercel).
+//
+// If the partner attached a preset (.json) on the form, we pass it to the workflow
+// (base64 in a workflow input) so the pipeline can extract the placed sections and
+// run the section-coverage diff. Nothing is stored: it rides the dispatch once.
 //
 // Required Vercel env vars:
-//   GH_TOKEN   GitHub PAT with "actions:write" on the repo (fine-grained or classic repo scope)
-//   GH_REPO    "owner/repo"  (e.g. zidsa/theme-qa)
+//   GH_TOKEN   GitHub PAT with "actions:write" on the repo
+//   GH_REPO    "owner/repo"
 //   GH_REF     branch to run on (default "main")
 //   GH_WORKFLOW workflow file name (default "theme-qa.yml")
+const PRESET_MAX_CHARS = 45000; // keep base64 under the workflow_dispatch input limit
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
-  const { link, email } = body || {};
+  const { link, email, preset } = body || {};
 
   if (!link || !email) return res.status(400).json({ error: 'الرابط والإيميل مطلوبين' });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'إيميل غير صحيح' });
@@ -26,11 +32,27 @@ export default async function handler(req, res) {
   } catch { return res.status(400).json({ error: 'رابط غير صالح' }); }
   if (!themeId) return res.status(400).json({ error: 'الرابط ما فيه ?theme= — تأكد إنه رابط الفاليديشن' });
 
+  // preset is REQUIRED: validate it's JSON and not too large, then base64 it
+  if (!preset || typeof preset !== 'string') return res.status(400).json({ error: 'ملف الإعدادات (preset) مطلوب' });
+  try { JSON.parse(preset); } catch { return res.status(400).json({ error: 'ملف الإعدادات مو JSON صالح' }); }
+  if (preset.length > PRESET_MAX_CHARS) {
+    return res.status(400).json({ error: 'ملف الإعدادات كبير (>45KB) — قلّصيه أو استخدمي رابط preset_url' });
+  }
+  const presetB64 = Buffer.from(preset, 'utf-8').toString('base64');
+
   const repo = process.env.GH_REPO;
   const token = process.env.GH_TOKEN;
   const ref = process.env.GH_REF || 'main';
   const workflow = process.env.GH_WORKFLOW || 'theme-qa.yml';
   if (!repo || !token) return res.status(500).json({ error: 'الخادم غير مهيأ (GH_REPO/GH_TOKEN)' });
+
+  const inputs = {
+    preview_base: previewBase,
+    theme_id: themeId,
+    report_to: email,
+    theme_name: new URL(previewBase).hostname,
+  };
+  if (presetB64) inputs.preset_b64 = presetB64;
 
   const gh = await fetch(
     `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`,
@@ -42,19 +64,13 @@ export default async function handler(req, res) {
         'X-GitHub-Api-Version': '2022-11-28',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ref,
-        inputs: {
-          preview_base: previewBase,
-          theme_id: themeId,
-          report_to: email,
-          theme_name: new URL(previewBase).hostname,
-        },
-      }),
+      body: JSON.stringify({ ref, inputs }),
     }
   );
 
-  if (gh.status === 204) return res.status(200).json({ ok: true, preview_base: previewBase, theme_id: themeId });
+  if (gh.status === 204) {
+    return res.status(200).json({ ok: true, preview_base: previewBase, theme_id: themeId, preset: !!presetB64 });
+  }
   const detail = await gh.text().catch(() => '');
   return res.status(502).json({ error: 'تعذّر تشغيل الاختبار على GitHub', status: gh.status, detail: detail.slice(0, 300) });
 }
