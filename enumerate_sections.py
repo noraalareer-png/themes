@@ -23,6 +23,27 @@ import sys
 
 import validate_check as vc  # reuse fetch + text extraction
 
+# Example section names that appear in the /validate HELP text (not real theme
+# sections). Must never be counted as shipped. Extend if the help text changes.
+EXAMPLE_SECTIONS = {"your-section", "my-section", "example", "sample"}
+
+
+def results_region(text):
+    """Restrict to the actual results, dropping the help/explanatory preamble that
+    mentions example templates like sections/your-section.jinja. Mirrors
+    validate_check.parse_report so both scripts agree on the section inventory."""
+    start = text.find("Validation Summary")
+    end = text.find("Theme Requirements")
+    if start == -1:
+        start = 0
+    if end == -1 or end < start:
+        end = len(text)
+    return text[start:end]
+
+
+def slugof(name):
+    return re.sub(r"\.jinja$", "", re.sub(r"^sections/", "", name or ""))
+
 
 def sections_from_text(text):
     """Return [{name, renders}] for every sections/*.jinja row in the report."""
@@ -32,7 +53,7 @@ def sections_from_text(text):
     status = {"exists": None, "schema": None, "renders": None, "pass": None}
 
     def flush():
-        if current:
+        if current and slugof(current) not in EXAMPLE_SECTIONS:
             out.append({
                 "name": current,
                 "renders": status["renders"] if status["renders"] is not None else status["pass"],
@@ -80,7 +101,8 @@ def main():
 
     html = vc.fetch(url)
     text = vc.BeautifulSoup(html, "html.parser").get_text("\n") if vc.HAS_BS4 else html
-    sections = sections_from_text(text)
+    # Only scan the results region — excludes help-text example sections.
+    sections = sections_from_text(results_region(text))
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(sections, f, ensure_ascii=False, indent=2)
     print("Found {} sections -> {}".format(len(sections), args.out))
