@@ -10,7 +10,7 @@
 //   2. data-section-type="<slug>"         (section type — see HOOKS_CONTRACT.md)
 //   3. class-name fallback                (brittle; skips with an actionable message if absent)
 import { test, expect } from '@playwright/test';
-import { themed } from '../lib/helpers.js';
+import { themed, collectConsoleErrors } from '../lib/helpers.js';
 import fs from 'fs';
 
 let sections = [];
@@ -42,9 +42,10 @@ test.describe('Section rendering coverage (from preset)', () => {
   for (const s of sections) {
     const title = `SEC-${s.slug}${s.locale ? '-' + s.locale : ''}`;
     test(`${title} renders on ${s.page || 'home'}`, async ({ page }, testInfo) => {
-      const errors = [];
-      page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-      page.on('pageerror', (e) => errors.push(String(e)));
+      // Use the SHARED, FILTERED console collector (same as the rest of the suite) so
+      // third-party / platform noise (analytics, identity SDK 400/401) doesn't cause a
+      // false failure. Page-level noise is not a per-section defect.
+      const errors = collectConsoleErrors(page);
 
       await page.goto(themed(routeFor(s.page)));
       await page.waitForLoadState('networkidle');
