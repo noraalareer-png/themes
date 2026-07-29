@@ -46,6 +46,9 @@
     transition:border-color .15s, box-shadow .15s}
   input::placeholder{color:#b3a9c4}
   input:focus{outline:none;border-color:var(--lavender);box-shadow:0 0 0 4px rgba(169,116,255,.16)}
+  input[type=file]{padding:11px 14px;cursor:pointer}
+  input[type=file]::file-selector-button{font-family:inherit;font-weight:600;font-size:13px;cursor:pointer;
+    margin-inline-end:12px;padding:8px 14px;border:0;border-radius:9999px;background:var(--silver);color:var(--dark)}
   .hint{font-size:12.5px;color:var(--muted);margin-top:7px}
   .hint code{background:var(--silver);padding:1px 6px;border-radius:6px;font-size:12px}
 
@@ -86,6 +89,10 @@
       <label for="email">الإيميل لاستلام التقرير</label>
       <input id="email" name="email" type="email" required placeholder="you@example.com">
 
+      <label for="preset">ملف الإعدادات (preset ‎.json)</label>
+      <input id="preset" name="preset" type="file" accept="application/json,.json" required>
+      <div class="hint"><b>مطلوب</b> — صدّره من محرّر الثيم: <code>Customize → Export</code>. يُستخدم لفحص <b>تغطية الأقسام</b> (هل استُخدمت كل أقسام الثيم).</div>
+
       <button id="btn" type="submit">
         تشغيل الاختبار
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
@@ -103,14 +110,20 @@ const label=btn.innerHTML;
 f.addEventListener('submit',async(e)=>{
   e.preventDefault(); msg.className='msg'; btn.disabled=true; btn.textContent='جارٍ التشغيل…';
   try{
+    // Preset file is REQUIRED -> read as text and validate it's JSON before sending.
+    const file=f.preset.files && f.preset.files[0];
+    if(!file) throw new Error('ملف الإعدادات (preset) مطلوب.');
+    const text=await file.text();
+    try{ JSON.parse(text); }catch{ throw new Error('ملف الإعدادات مو JSON صالح.'); }
+    const preset=text;
     const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({link:f.link.value.trim(),email:f.email.value.trim()})});
+      body:JSON.stringify({link:f.link.value.trim(),email:f.email.value.trim(),preset})});
     const data=await r.json().catch(()=>({}));
     if(r.ok&&data.ok){ msg.className='msg ok';
-      msg.textContent='✅ تم بدء الاختبار. بيوصلك التقرير على إيميلك خلال دقائق.'; f.reset(); }
+      msg.textContent='✅ تم بدء الاختبار مع فحص تغطية الأقسام. بيوصلك التقرير على إيميلك خلال دقائق.'; f.reset(); }
     else{ msg.className='msg err';
       msg.textContent='❌ '+(data.error||'صار خطأ، تأكد من الرابط وحاول مرة ثانية.'); }
-  }catch(err){ msg.className='msg err'; msg.textContent='❌ تعذّر الاتصال بالخادم.'; }
+  }catch(err){ msg.className='msg err'; msg.textContent='❌ '+(err.message||'تعذّر الاتصال بالخادم.'); }
   finally{ btn.disabled=false; btn.innerHTML=label; }
 });
 </script>
