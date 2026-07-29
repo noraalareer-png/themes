@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
 import { openFirstProduct, PDP_TITLE } from '../lib/cart.js';
 
-const SEARCH_INPUT = 'input[type="search"], input[name*="search" i], input[placeholder*="بحث"], input[aria-label*="بحث" i], input[aria-label*="search" i]';
+const SEARCH_INPUT = 'input[type="search"], input[name="q"], input[name*="search" i], input[placeholder*="بحث"], input[aria-label*="بحث" i], input[aria-label*="search" i]';
 
 // Find the search input; many themes hide it behind an icon toggle, so click a
 // search toggle first if the input isn't immediately present. Returns the input
@@ -12,8 +12,14 @@ const SEARCH_INPUT = 'input[type="search"], input[name*="search" i], input[place
 async function openSearch(page) {
   let input = page.locator(SEARCH_INPUT).first();
   if ((await input.count()) && (await input.isVisible().catch(() => false))) return input;
-  const toggle = page.locator('[class*="search-icon" i], [aria-label*="search" i], [aria-label*="بحث"], [class*="search" i] button, button[class*="search" i]').first();
-  if (await toggle.count()) { await toggle.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(600); }
+  // Prefer the actual toggle BUTTON (aria-label="بحث"); clicking the wrapping
+  // <li class="custom-header-search-icon"> does nothing — that was the false skip.
+  const toggle = page.locator(
+    'button[aria-label*="بحث"], button[aria-label*="search" i], ' +
+    '.custom-header-search-icon button, [class*="search-icon" i] button, ' +
+    '[class*="search" i] button, button[class*="search" i], [aria-label*="بحث"]'
+  ).first();
+  if (await toggle.count()) { await toggle.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(700); }
   input = page.locator(SEARCH_INPUT).first();
   if ((await input.count()) && (await input.isVisible().catch(() => false))) return input;
   return null;
