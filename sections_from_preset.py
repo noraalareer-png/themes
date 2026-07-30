@@ -5,40 +5,87 @@ Parse the partner's uploaded preset JSON into the list of sections configured pe
 The preset is exported from the theme editor (Customize -> Export) and uploaded with the theme.
 Confirmed structure:
 
-    { "presets": [
-        { "path": "templates/home.jinja",
-          "settings": { "components": {
-              "ar": [ {"display": true, "settings": {"order": 0, ...},
-                       "template": "sections/main-slider.jinja",
-                       "section_id": "cc63...."}, ... ],
-              "en": [ ... ]
-          } } },
-        ...
-    ] }
+{ "presets": [
+    { "path": "templates/home.jinja",
+      "settings": { "components": {
+          "ar": [ {"display": true, "settings": {"order": 0, ...},
+                   "template": "sections/main-slider.jinja",
+                   "section_id": "cc63...."}, ... ],
+          "en": [ ... ]
+      } } },
+    ...
+] }
 
 Each component is one placed section instance:
-  - template   -> which section (sections/<name>.jinja)
-  - display    -> whether it is actually shown (false = placed but hidden)
-  - section_id -> unique instance id (matches data-section-id in the HTML, if themes emit it)
-  - settings.order -> position on the page
-Components are per-locale (ar / en) and may differ between locales.
+- template   -> which section (sections/<name>.jinja)
+- display    -> whether it is actually shown (false = placed but hidden)
+- section_id -> unique instance id (matches data-section-id in the HTML, if themes emit it)
+- settings   -> the configured content (headings, texts, images ...)
 
 Output: sections.json =
-    [ { "name": "sections/main-slider.jinja", "slug": "main-slider",
-        "page": "templates/home.jinja", "locale": "ar",
-        "section_id": "cc63...", "order": 0, "display": true }, ... ]
+[ { "name": "sections/main-slider.jinja", "slug": "main-slider",
+    "page": "templates/home.jinja", "locale": "ar",
+    "section_id": "cc63...", "order": 0, "display": true,
+    "match_texts": ["<a heading/text from settings to find on the page>", ...] }, ... ]
 
-By default only display:true sections are emitted (what the merchant actually sees). Use
---include-hidden to also list placed-but-hidden ones.
+`match_texts` powers CONTENT-BASED section verification: the E2E suite confirms each
+placed section actually rendered by finding its configured text on the storefront — no
+theme hooks or class-name guessing required.
 """
 import argparse
 import json
 import re
 import sys
 
+# Generic strings that appear across many sections -> poor discriminators, skip them.
+GENERIC = {
+    "تسوق الان", "تسوق الآن", "تسوق", "اشتر الآن", "اطلب الان", "المزيد", "عرض الكل",
+    "shop now", "buy now", "view all", "read more", "more",
+}
+
+# Keys whose string values are good, stable identifiers for a section.
+TEXT_KEYS = re.compile(r"(heading|title|subtitle|description|text|badge)", re.I)
+
 
 def slug(template):
     return re.sub(r"\.jinja$", "", re.sub(r"^sections/", "", template or ""))
+
+
+def norm(s):
+    return " ".join((s or "").split()).strip()
+
+
+def extract_match_texts(settings):
+    """Pull up to 3 distinct, non-generic heading/text strings from a section's settings."""
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(v, str):
+                    s = norm(v)
+                    if (TEXT_KEYS.search(k or "")
+                            and len(s) >= 4
+                            and not s.startswith("#")            # color
+                            and not s.startswith("http")          # url
+                            and not s.replace(".", "").isdigit()  # number
+                            and s.lower() not in GENERIC):
+                        found.append(s)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+
+    walk(settings or {})
+    # Prefer longer (more unique) strings; drop near-duplicates/substrings; cap at 3.
+    picked = []
+    for s in sorted(set(found), key=lambda x: -len(x)):
+        if all(s not in p and p not in s for p in picked):
+            picked.append(s)
+        if len(picked) >= 3:
+            break
+    return picked
 
 
 def parse_preset(doc, include_hidden=False):
@@ -66,8 +113,23 @@ def parse_preset(doc, include_hidden=False):
                     "section_id": comp.get("section_id"),
                     "order": (comp.get("settings", {}) or {}).get("order"),
                     "display": bool(display),
+                    "match_texts": extract_match_texts(comp.get("settings", {})),
                 })
     return out
+
+
+def drop_shared_match_texts(sections):
+    """Remove match_texts that appear in more than one section, so a section is never
+    located by text that actually belongs to a different section (e.g. a heading a
+    merchant copy-pasted into two blocks)."""
+    from collections import Counter
+    counts = Counter()
+    for s in sections:
+        for t in set(s.get("match_texts", [])):
+            counts[t] += 1
+    for s in sections:
+        s["match_texts"] = [t for t in s.get("match_texts", []) if counts[t] == 1]
+    return sections
 
 
 def dedup_for_tests(sections):
@@ -93,6 +155,7 @@ def main():
     sections = parse_preset(doc, include_hidden=args.include_hidden)
     if not args.all_instances:
         sections = dedup_for_tests(sections)
+    sections = drop_shared_match_texts(sections)
 
     json.dump(sections, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
@@ -101,8 +164,8 @@ def main():
               file=sys.stderr)
     print("Extracted {} section placements -> {}".format(len(sections), args.out))
     for s in sections:
-        print("  {:24} page={:22} locale={} display={}".format(
-            s["slug"], s["page"], s["locale"], s["display"]))
+        tags = (s["match_texts"][0][:30] + "…") if s["match_texts"] else "(no match text)"
+        print("  {:24} page={:22} locale={} match={}".format(s["slug"], s["page"], s["locale"], tags))
 
 
 if __name__ == "__main__":
