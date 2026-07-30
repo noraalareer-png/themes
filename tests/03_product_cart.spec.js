@@ -77,18 +77,26 @@ test.describe('Cart flow', () => {
     await couponInput.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
     if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
 
+    // Some themes reject an invalid coupon via a native alert()/confirm() — capture it.
+    let dialogMsg = '';
+    page.on('dialog', (d) => { dialogMsg = d.message() || ''; d.dismiss().catch(() => {}); });
+
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
     // Apply button text varies by theme: تطبيق / إرسال / تحقق / إضافة / Apply.
     await page.locator(
       'button:has-text("تطبيق"), button:has-text("إرسال"), button:has-text("تحقق"), button:has-text("إضافة"), button:has-text("Apply")'
     ).first().click({ timeout: 6000 }).catch(() => {});
 
-    // The error usually shows as a TRANSIENT toast/alert at the top, so poll for a
-    // few seconds for either a toast/alert element OR error text in the body.
-    const errRe = /غير صالح|غير صحيح|غير موجود|غير متوفر|منتهي|لا يمكن|فشل|خطأ|invalid|not valid|expired|error|wrong/i;
-    const toast = page.locator('[role="alert"], [class*="toast" i], [class*="alert" i], [class*="notification" i], [class*="snackbar" i], [class*="message" i]');
+    // The error usually shows as a TRANSIENT toast/alert (top of page) or a native
+    // dialog. Poll a few seconds for any of them (or error text in the body).
+    const errRe = /غير صالح|غير صحيح|غير موجود|غير متوفر|منتهي|لا يمكن|فشل|خطأ|القسيمة|الكوبون|الرمز|invalid|not valid|expired|error|wrong/i;
+    const toast = page.locator(
+      '[role="alert"], [class*="toast" i], [class*="alert" i], [class*="notification" i], ' +
+      '[class*="snackbar" i], [class*="message" i], [class*="swal" i], [class*="toastify" i], [class*="izitoast" i]'
+    );
     let shown = false;
     for (let t = 0; t < 6 && !shown; t++) {
+      if (dialogMsg && errRe.test(dialogMsg)) { shown = true; break; }
       const n = await toast.count();
       for (let i = 0; i < n; i++) {
         const tx = (await toast.nth(i).innerText().catch(() => '')) || '';
