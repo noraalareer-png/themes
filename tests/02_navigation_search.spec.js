@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { themed } from '../lib/helpers.js';
 import { openFirstProduct, PDP_TITLE } from '../lib/cart.js';
 
-const SEARCH_INPUT = 'input[type="search"], input[name="q"], input[name*="search" i], input[placeholder*="بحث"], input[aria-label*="بحث" i], input[aria-label*="search" i]';
+const SEARCH_INPUT = 'input[type="search"], input[name="q"], input[name*="search" i], input[class*="search" i], input[placeholder*="بحث"], input[aria-label*="بحث" i], input[aria-label*="search" i]';
 
 // Find the search input; many themes hide it behind an icon toggle, so click a
 // search toggle first if the input isn't immediately present. Returns the input
@@ -17,7 +17,10 @@ async function openSearch(page) {
   const toggle = page.locator(
     'button[aria-label*="بحث"], button[aria-label*="search" i], ' +
     '.custom-header-search-icon button, [class*="search-icon" i] button, ' +
-    '[class*="search" i] button, button[class*="search" i], [aria-label*="بحث"]'
+    '[class*="search" i] button, button[class*="search" i], ' +
+    // icon-only toggles (spans/divs) seen on other themes:
+    '[class*="sm-search" i], span[class*="icon-search" i], [class*="search-input-icon" i], [class*="search-icon" i], ' +
+    '[aria-label*="بحث"]'
   ).first();
   if (await toggle.count()) { await toggle.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(700); }
   input = page.locator(SEARCH_INPUT).first();
@@ -52,7 +55,12 @@ test.describe('Menu & category navigation', () => {
   test('CAT-05 "All products" listing loads product cards', async ({ page }) => {
     await page.goto(themed('/products'));
     await page.waitForLoadState('networkidle');
-    const cards = page.locator('[class*="product-card"], [class*="product_card"], [class*="product"] a, [data-product-id], article');
+    // Scope to VISIBLE product cards. The old `[class*="product"] a` matched a hidden
+    // nav dropdown link (<a class="dropdown-item">) on some themes → false failure.
+    const cards = page.locator(
+      '[class*="product-card" i]:visible, [class*="product_card" i]:visible, ' +
+      '[data-product-id]:visible, a[href*="/products/" i]:visible, article:visible'
+    );
     await expect(cards.first()).toBeVisible();
   });
 });
