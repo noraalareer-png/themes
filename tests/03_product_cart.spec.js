@@ -78,9 +78,28 @@ test.describe('Cart flow', () => {
     if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
 
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
-    await page.locator('button:has-text("تطبيق"), button:has-text("إضافة"), button:has-text("Apply")').first().click({ timeout: 6000 }).catch(() => {});
-    await page.waitForTimeout(1500);
-    const body = (await page.locator('body').innerText()).toLowerCase();
-    expect(body).toMatch(/غير صالح|غير صحيح|غير موجود|منتهي|لا يمكن|invalid|not valid|expired|error|خطأ/);
+    // Apply button text varies by theme: تطبيق / إرسال / تحقق / إضافة / Apply.
+    await page.locator(
+      'button:has-text("تطبيق"), button:has-text("إرسال"), button:has-text("تحقق"), button:has-text("إضافة"), button:has-text("Apply")'
+    ).first().click({ timeout: 6000 }).catch(() => {});
+
+    // The error usually shows as a TRANSIENT toast/alert at the top, so poll for a
+    // few seconds for either a toast/alert element OR error text in the body.
+    const errRe = /غير صالح|غير صحيح|غير موجود|غير متوفر|منتهي|لا يمكن|فشل|خطأ|invalid|not valid|expired|error|wrong/i;
+    const toast = page.locator('[role="alert"], [class*="toast" i], [class*="alert" i], [class*="notification" i], [class*="snackbar" i], [class*="message" i]');
+    let shown = false;
+    for (let t = 0; t < 6 && !shown; t++) {
+      const n = await toast.count();
+      for (let i = 0; i < n; i++) {
+        const tx = (await toast.nth(i).innerText().catch(() => '')) || '';
+        if (tx && errRe.test(tx)) { shown = true; break; }
+      }
+      if (!shown) {
+        const body = (await page.locator('body').innerText().catch(() => '')) || '';
+        if (errRe.test(body)) shown = true;
+      }
+      if (!shown) await page.waitForTimeout(700);
+    }
+    expect(shown, 'no invalid-coupon error/toast appeared after applying an invalid coupon').toBeTruthy();
   });
 });
