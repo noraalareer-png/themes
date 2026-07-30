@@ -10,6 +10,10 @@ import { themed, collectConsoleErrors, brokenImages, settleImages, htmlDir } fro
 // store) to make same-theme console errors fail the build.
 const CONSOLE_STRICT = process.env.CONSOLE_STRICT === '1';
 
+// A visible footer only. `[class*="footer"]` alone matched a HIDDEN modal footer
+// (div.modal-footer-container) on some themes → false failure; :visible avoids it.
+const FOOTER = 'footer:visible, [class*="footer" i]:visible';
+
 test.describe('Main page structure', () => {
   test('MP-01 favicon is present', async ({ page }) => {
     await page.goto(themed('/'));
@@ -45,12 +49,12 @@ test.describe('Main page structure', () => {
 
   test('FT-01 footer is present', async ({ page }) => {
     await page.goto(themed('/'));
-    await expect(page.locator('footer, [class*="footer"]').first()).toBeVisible();
+    await expect(page.locator(FOOTER).first()).toBeVisible();
   });
 
   test('FT-08 footer has copyright / content', async ({ page }) => {
     await page.goto(themed('/'));
-    const footerText = (await page.locator('footer, [class*="footer"]').first().innerText()).trim();
+    const footerText = (await page.locator(FOOTER).first().innerText()).trim();
     expect(footerText.length).toBeGreaterThan(0);
   });
 });
