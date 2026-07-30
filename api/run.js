@@ -11,7 +11,10 @@
 //   GH_REPO    "owner/repo"
 //   GH_REF     branch to run on (default "main")
 //   GH_WORKFLOW workflow file name (default "theme-qa.yml")
-const PRESET_MAX_CHARS = 45000; // keep base64 under the workflow_dispatch input limit
+import zlib from 'zlib';
+
+const PRESET_MAX_RAW = 2000000;  // sane upper bound on the raw preset JSON (2 MB)
+const PRESET_MAX_B64 = 60000;    // gzipped+base64 must fit one workflow_dispatch input
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -32,13 +35,17 @@ export default async function handler(req, res) {
   } catch { return res.status(400).json({ error: 'رابط غير صالح' }); }
   if (!themeId) return res.status(400).json({ error: 'الرابط ما فيه ?theme= — تأكد إنه رابط الفاليديشن' });
 
-  // preset is REQUIRED: validate it's JSON and not too large, then base64 it
+  // preset is REQUIRED: validate it's JSON, then gzip + base64 (JSON compresses
+  // ~5-8x, so even large presets fit in one workflow input; the workflow gunzips it).
   if (!preset || typeof preset !== 'string') return res.status(400).json({ error: 'ملف الإعدادات (preset) مطلوب' });
   try { JSON.parse(preset); } catch { return res.status(400).json({ error: 'ملف الإعدادات مو JSON صالح' }); }
-  if (preset.length > PRESET_MAX_CHARS) {
-    return res.status(400).json({ error: 'ملف الإعدادات كبير (>45KB) — قلّصيه أو استخدمي رابط preset_url' });
+  if (preset.length > PRESET_MAX_RAW) {
+    return res.status(400).json({ error: 'ملف الإعدادات كبير جدًا — استخدمي رابط preset_url' });
   }
-  const presetB64 = Buffer.from(preset, 'utf-8').toString('base64');
+  const presetB64 = zlib.gzipSync(Buffer.from(preset, 'utf-8')).toString('base64');
+  if (presetB64.length > PRESET_MAX_B64) {
+    return res.status(400).json({ error: 'ملف الإعدادات كبير جدًا حتى بعد الضغط — استخدمي رابط preset_url' });
+  }
 
   const repo = process.env.GH_REPO;
   const token = process.env.GH_TOKEN;
