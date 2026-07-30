@@ -78,8 +78,8 @@ jobs:
         continue-on-error: true
         run: |
           if [ -n "$PRESET_B64" ]; then
-            echo "Decoding preset from the submission form (base64)"
-            echo "$PRESET_B64" | base64 -d > preset.json || echo "WARN: preset decode failed"
+            echo "Decoding preset from the submission form (gzip+base64)"
+            echo "$PRESET_B64" | base64 -d | gunzip > preset.json || echo "WARN: preset decode failed"
           elif [ -n "$PRESET_URL" ]; then
             echo "Fetching preset from PRESET_URL"
             curl -fsSL "$PRESET_URL" -o preset.json || echo "WARN: preset download failed"
