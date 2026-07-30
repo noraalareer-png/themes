@@ -77,9 +77,31 @@ test.describe('Cart flow', () => {
     await couponInput.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
     if (!(await couponInput.count())) test.skip(true, 'coupon input not present on cart page — map the coupon selector');
 
-    // Some themes reject an invalid coupon via a native alert()/confirm() — capture it.
+    // The invalid-coupon feedback is often a TRANSIENT toast that flashes for <1s
+    // (which is why it was missed on desktop). Detect it three ways:
+    //   1) a native alert()/confirm() dialog,
+    //   2) a MutationObserver that records ANY added node whose text matches — catches
+    //      even a toast that appears and disappears between polls,
+    //   3) toast/alert elements + body text (steady-state fallback).
+    const errSrc = 'غير صالح|غير صحيح|غير موجود|غير متوفر|منتهي|لا يمكن|فشل|خطأ|القسيمة|الكوبون|الرمز|invalid|not valid|expired|error|wrong';
+    const errRe = new RegExp(errSrc, 'i');
+
     let dialogMsg = '';
     page.on('dialog', (d) => { dialogMsg = d.message() || ''; d.dismiss().catch(() => {}); });
+
+    // Arm the observer BEFORE applying, so a flashing toast can't be missed.
+    await page.evaluate((src) => {
+      window.__couponErr = '';
+      const re = new RegExp(src, 'i');
+      const scan = (el) => {
+        const t = (el && (el.innerText || el.textContent)) || '';
+        if (t && re.test(t)) window.__couponErr = String(t).slice(0, 200);
+      };
+      const obs = new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
+        if (n.nodeType === 1) { scan(n); n.querySelectorAll && n.querySelectorAll('*').forEach(scan); }
+      })));
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+    }, errSrc).catch(() => {});
 
     await couponInput.fill('INVALID_TEST_COUPON_XYZ');
     // Apply button text varies by theme: تطبيق / إرسال / تحقق / إضافة / Apply.
@@ -87,16 +109,14 @@ test.describe('Cart flow', () => {
       'button:has-text("تطبيق"), button:has-text("إرسال"), button:has-text("تحقق"), button:has-text("إضافة"), button:has-text("Apply")'
     ).first().click({ timeout: 6000 }).catch(() => {});
 
-    // The error usually shows as a TRANSIENT toast/alert (top of page) or a native
-    // dialog. Poll a few seconds for any of them (or error text in the body).
-    const errRe = /غير صالح|غير صحيح|غير موجود|غير متوفر|منتهي|لا يمكن|فشل|خطأ|القسيمة|الكوبون|الرمز|invalid|not valid|expired|error|wrong/i;
     const toast = page.locator(
       '[role="alert"], [class*="toast" i], [class*="alert" i], [class*="notification" i], ' +
       '[class*="snackbar" i], [class*="message" i], [class*="swal" i], [class*="toastify" i], [class*="izitoast" i]'
     );
     let shown = false;
-    for (let t = 0; t < 6 && !shown; t++) {
-      if (dialogMsg && errRe.test(dialogMsg)) { shown = true; break; }
+    for (let t = 0; t < 8 && !shown; t++) {
+      const captured = (await page.evaluate(() => window.__couponErr || '').catch(() => '')) || '';
+      if ((captured && errRe.test(captured)) || (dialogMsg && errRe.test(dialogMsg))) { shown = true; break; }
       const n = await toast.count();
       for (let i = 0; i < n; i++) {
         const tx = (await toast.nth(i).innerText().catch(() => '')) || '';
@@ -106,7 +126,7 @@ test.describe('Cart flow', () => {
         const body = (await page.locator('body').innerText().catch(() => '')) || '';
         if (errRe.test(body)) shown = true;
       }
-      if (!shown) await page.waitForTimeout(700);
+      if (!shown) await page.waitForTimeout(500);
     }
     expect(shown, 'no invalid-coupon error/toast appeared after applying an invalid coupon').toBeTruthy();
   });
