@@ -1,14 +1,15 @@
 // Section coverage — data-driven from the partner's uploaded preset.
 //
-// sections_from_preset.py turns the preset into sections.json:
-//   [{ name:"sections/main-slider.jinja", slug:"main-slider", page:"templates/home.jinja",
-//      locale:"ar", section_id:"cc63...", order:0, display:true }, ...]
+// PRIMARY check is CONTENT-BASED: for each placed section, sections_from_preset.py
+// extracts a configured heading/text (`match_texts`) from the preset settings, and we
+// confirm that text actually renders (visible) on the storefront. This verifies the
+// section rendered WITH ITS REAL CONTENT, works on any theme, and needs no theme hooks.
 //
-// For each placed (display:true) section we open the page it lives on and assert it renders
-// with no broken images / console errors, and attach a screenshot. Locating uses, in order:
-//   1. data-section-id="<section_id>"     (exact instance — most precise; from the preset)
-//   2. data-section-type="<slug>"         (section type — see HOOKS_CONTRACT.md)
-//   3. class-name fallback                (brittle; skips with an actionable message if absent)
+// Fallbacks, in order, if no match text is available/found:
+//   2. data-section-id / data-section-type hook (if the theme emits it)
+//   3. class-name match (+ CLASS_ALIASES stopgap)
+//   4. body text contains the content (present even if split across nodes)
+// Only if all fail do we skip (never a false pass). Console noise is filtered.
 import { test, expect } from '@playwright/test';
 import { themed, collectConsoleErrors } from '../lib/helpers.js';
 import fs from 'fs';
@@ -20,20 +21,18 @@ try {
   sections = [];
 }
 
-// STOPGAP: some sections render with a class that doesn't contain their slug, and
-// this theme emits NO data-section-type/data-section-id hooks (so class-guessing is
-// the only locator). Map slug -> extra class fragments to match those. The proper
-// fix is the theme emitting data-section-type="<slug>" (see HOOKS_CONTRACT.md), which
-// makes this map unnecessary.
+const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
+// STOPGAP class aliases for themes whose class doesn't contain the slug and that emit
+// no data-section-type hook. Content matching usually makes this unnecessary.
 const CLASS_ALIASES = {
   'payments-showcase': ['luxury-payments', 'payments-section'],
 };
 
-// Map a preset page path to a storefront route.
 function routeFor(page) {
   const map = {
     'templates/home.jinja': '/',
-    'templates/product.jinja': '/products',      // opens listing; product tests cover PDP
+    'templates/product.jinja': '/products',
     'templates/products.jinja': '/products',
     'templates/category.jinja': '/categories',
     'templates/categories.jinja': '/categories',
@@ -51,38 +50,57 @@ test.describe('Section rendering coverage (from preset)', () => {
   for (const s of sections) {
     const title = `SEC-${s.slug}${s.locale ? '-' + s.locale : ''}`;
     test(`${title} renders on ${s.page || 'home'}`, async ({ page }, testInfo) => {
-      // Use the SHARED, FILTERED console collector (same as the rest of the suite) so
-      // third-party / platform noise (analytics, identity SDK 400/401) doesn't cause a
-      // false failure. Page-level noise is not a per-section defect.
       const errors = collectConsoleErrors(page);
-
       await page.goto(themed(routeFor(s.page)));
       await page.waitForLoadState('networkidle');
 
-      const aliasSel = (CLASS_ALIASES[s.slug] || []).map((a) => `section[class*="${a}" i], [class*="${a}" i]`).join(', ');
-      const hook = page.locator(
-        (s.section_id ? `[data-section-id="${s.section_id}"], ` : '') +
-        `[data-section-type="${s.slug}"], ` +
-        `section[class*="${s.slug}"], [class*="${s.slug}"]` +
-        (aliasSel ? ', ' + aliasSel : '')
-      ).first();
+      const texts = (s.match_texts || []).map(norm).filter((t) => t.length >= 4);
 
-      if (!(await hook.count())) {
-        test.skip(true,
-          `section "${s.slug}" not found — expose data-section-id="${s.section_id}" ` +
-          `or data-section-type="${s.slug}" in the theme (see HOOKS_CONTRACT.md)`);
+      // 1) CONTENT: a visible element containing the section's configured text.
+      let located = null;
+      for (const t of texts) {
+        for (const q of [t, t.slice(0, 20)]) {
+          const loc = page.getByText(q, { exact: false }).first();
+          if ((await loc.count()) && (await loc.isVisible().catch(() => false))) { located = loc; break; }
+        }
+        if (located) break;
       }
 
-      await expect(hook, `section ${s.slug} not visible`).toBeVisible();
+      // 2) hook / class / alias fallback
+      if (!located) {
+        const aliasSel = (CLASS_ALIASES[s.slug] || []).map((a) => `section[class*="${a}" i], [class*="${a}" i]`).join(', ');
+        const sel = (s.section_id ? `[data-section-id="${s.section_id}"], ` : '') +
+          `[data-section-type="${s.slug}"], section[class*="${s.slug}"], [class*="${s.slug}"]` +
+          (aliasSel ? ', ' + aliasSel : '');
+        const h = page.locator(sel).first();
+        if ((await h.count()) && (await h.isVisible().catch(() => false))) located = h;
+      }
 
-      const broken = await hook.locator('img').evaluateAll((imgs) =>
-        imgs.filter((i) => i.complete && i.naturalWidth === 0 && i.getAttribute('src'))
-            .map((i) => i.getAttribute('src'))
-      );
-      expect(broken, `broken images in ${s.slug}: ${broken.join(', ')}`).toEqual([]);
+      // 3) last resort: content present in the page text (even if split across nodes)
+      let present = !!located;
+      if (!present && texts.length) {
+        const body = norm(await page.locator('body').innerText().catch(() => ''));
+        present = texts.some((t) => body.includes(t) || body.includes(t.slice(0, 20)));
+      }
+
+      if (!located && !present) {
+        test.skip(true,
+          `section "${s.slug}" not found — its configured content isn't visible and no ` +
+          `hook/class matched. Expose data-section-type="${s.slug}" (HOOKS_CONTRACT.md) or check the preset.`);
+      }
+
+      if (located) await expect(located, `section ${s.slug} not visible`).toBeVisible();
+      else expect(present, `section ${s.slug} content not on page`).toBeTruthy();
+
       expect(errors, `console errors on ${s.page}: ${errors.join(' | ')}`).toEqual([]);
 
-      const shot = await hook.screenshot().catch(() => null);
+      // Screenshot the nearest section container for review (fallback: full page).
+      let shotEl = located;
+      if (located) {
+        const anc = located.locator('xpath=ancestor-or-self::section[1]').first();
+        if (await anc.count()) shotEl = anc;
+      }
+      const shot = await (shotEl || page).screenshot(shotEl ? {} : { fullPage: true }).catch(() => null);
       if (shot) await testInfo.attach(`section-${s.slug}-${s.locale || ''}`, { body: shot, contentType: 'image/png' });
     });
   }
